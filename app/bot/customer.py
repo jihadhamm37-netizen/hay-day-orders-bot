@@ -14,7 +14,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InputMediaPhoto, 
 from ..core import Core, StoreError, fmt
 from ..i18n import err, t
 from ..services import catalog, deposits, orders, system, wallet
-from .ui import (MENU, btn, copy_btn, credentials_kb, credentials_text, deposit_line, dt, e, kb, lang_kb,
+from .ui import (MENU, btn, copy_btn, credentials_batch_messages, credentials_kb, credentials_text, deposit_line, dt, e, kb, lang_kb,
                  main_menu, menu_labels, order_line, tx_line, type_card, url_btn)
 
 log = logging.getLogger(__name__)
@@ -550,6 +550,10 @@ async def order_detail(cb: CallbackQuery, core: Core, lang: str):
     rows = []
     if o["status"] == "completed":
         rows.append([btn(t(lang, "btn_show_creds"), f"c:oc:{o['id']}", "success")])
+        if o.get("batch_id"):
+            n = await core.pool.fetchval("SELECT count(*) FROM orders WHERE batch_id=$1 AND status='completed'", o["batch_id"])
+            if n > 1:
+                rows.append([btn(t(lang, "btn_show_batch", n=n), f"c:ob:{o['id']}", "primary")])
     if o["status"] == "needs_review" and (o["failure_reason"] or "").startswith("فشل التسليم"):
         rows.append([btn(t(lang, "btn_retry"), f"c:or:{o['id']}", "primary")])
     rows.append([btn(t(lang, "back"), "c:orders")])
@@ -573,6 +577,18 @@ async def order_credentials(cb: CallbackQuery, core: Core, lang: str):
         except TelegramBadRequest:
             pass
     await cb.message.answer(text, reply_markup=markup)
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("c:ob:"))
+async def order_batch_credentials(cb: CallbackQuery, core: Core, lang: str):
+    try:
+        items = await orders.buyer_batch_credentials(core, cb.from_user.id, int(cb.data.split(":")[2]))
+    except StoreError as ex:
+        await cb.answer(err(lang, ex), show_alert=True)
+        return
+    for text, markup in credentials_batch_messages(items, lang):
+        await cb.message.answer(text, reply_markup=markup)
     await cb.answer()
 
 

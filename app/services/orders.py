@@ -130,9 +130,10 @@ async def _confirm(core: Core, user_id: int, order_id: int) -> list[dict]:
 async def purchase(core: Core, user_id: int, order_id: int) -> dict:
     """Confirm + deliver every order of the batch. Returns the first order, with 'batch' = all orders."""
     confirmed = await _confirm(core, user_id, order_id)
-    n = len(confirmed)
-    for i, o in enumerate(confirmed, 1):
-        await deliver(core, o["id"], part=(i, n) if n > 1 else None)
+    if len(confirmed) == 1:
+        await deliver(core, confirmed[0]["id"])
+    else:
+        await deliver_batch(core, [o["id"] for o in confirmed])
     final = [await get_order(core, o["id"]) for o in confirmed]
     first = dict(final[0])
     first["batch"] = final
@@ -181,6 +182,64 @@ async def deliver(core: Core, order_id: int, *, actor: str = "system", part: tup
             log.exception("sale notification failed")
     await check_stock_alert(core, o["type_id"])
     return True
+
+
+async def deliver_batch(core: Core, order_ids: list[int]) -> bool:
+    """Send all accounts of a multi-farm purchase in ONE message; complete them only if Telegram accepted it."""
+    rs = await core.pool.fetch(
+        "SELECT o.*, a.login_enc, a.password_enc, t.photo_file_id AS photo "
+        "FROM orders o JOIN farm_accounts a ON a.id=o.account_id JOIN farm_types t ON t.id=o.type_id "
+        "WHERE o.id = ANY($1::bigint[]) AND o.status='processing' ORDER BY o.id", order_ids)
+    if not rs:
+        return False
+    first = rs[0]
+    try:
+        if core.messenger is None:
+            raise RuntimeError("messenger not configured")
+        items = [(dict(r), core.vault.decrypt(r["login_enc"]), core.vault.decrypt(r["password_enc"])) for r in rs]
+        await core.messenger.send_credentials_batch(first["user_id"], items)
+    except Exception as e:
+        log.warning("batch delivery failed for %s: %s", first["ref"], e)
+        await core.pool.execute(
+            "UPDATE orders SET status='needs_review', failure_reason=$2, updated_at=now() "
+            "WHERE id = ANY($1::bigint[]) AND status='processing'", [r["id"] for r in rs],
+            f"فشل التسليم: {type(e).__name__}: {str(e)[:200]}")
+        await raise_alert(core, "error", "delivery_failed",
+                          f"تعذر تسليم {len(rs)} حساب للمستخدم {first['user_id']} (الطلب {first['ref']}…). المبلغ مخصوم "
+                          f"والحسابات محجوزة — راجع الطلبات لإعادة الإرسال أو الاسترداد.", "order", first["id"],
+                          perm="orders")
+        return False
+    async with core.pool.acquire() as conn, conn.transaction():
+        await conn.execute("UPDATE orders SET status='completed', delivered_at=now(), failure_reason=NULL, "
+                           "updated_at=now() WHERE id = ANY($1::bigint[]) AND status IN ('processing','needs_review')",
+                           [r["id"] for r in rs])
+        await conn.execute("UPDATE farm_accounts SET status='sold', sold_at=now(), updated_at=now() "
+                           "WHERE id = ANY($1::bigint[]) AND status='reserved'", [r["account_id"] for r in rs])
+    if core.messenger:
+        snap = first["type_snapshot"]
+        user = await core.pool.fetchrow("SELECT username FROM users WHERE id=$1", first["user_id"])
+        uname = f"@{user['username']}" if user and user["username"] else str(first["user_id"])
+        total = sum(r["price"] for r in rs)
+        try:
+            await core.messenger.notify_admins(
+                f"🛒 <b>عملية بيع جديدة</b> — {len(rs)} مزارع\nالطلب: <code>{first['ref'].rsplit('-', 1)[0]}</code>\n"
+                f"النوع: {str(snap['name']).replace('<', '&lt;')} — LVL {snap['lvl']}\n"
+                f"الإجمالي: {fmt(total)} USDT\nالمشتري: {uname} (<code>{first['user_id']}</code>)", perm="orders")
+        except Exception:
+            log.exception("sale notification failed")
+    await check_stock_alert(core, first["type_id"])
+    return True
+
+
+async def buyer_batch_credentials(core: Core, user_id: int, order_id: int) -> list[tuple[dict, str, str]]:
+    """All completed accounts bought together with this order (buyer only)."""
+    rs = await core.pool.fetch(
+        "SELECT o.*, a.login_enc, a.password_enc FROM orders o JOIN farm_accounts a ON a.id=o.account_id "
+        "WHERE o.user_id=$2 AND o.status='completed' AND (o.id=$1 OR o.batch_id = "
+        "(SELECT batch_id FROM orders WHERE id=$1 AND user_id=$2)) ORDER BY o.id", order_id, user_id)
+    if not rs:
+        raise StoreError("not_found", "لا توجد بيانات لهذا الطلب.")
+    return [(dict(r), core.vault.decrypt(r["login_enc"]), core.vault.decrypt(r["password_enc"])) for r in rs]
 
 
 async def retry_delivery(core: Core, order_id: int, *, user_id: int | None = None, actor: str = "system") -> bool:

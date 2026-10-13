@@ -208,7 +208,16 @@ async def test_buy_quantity_three_farms_one_confirmation(env):
     await press(dp, bot, 44, confirm.callback_data)
     await press(dp, bot, 44, confirm.callback_data)
     cred_msgs = [m for m in s.of(SendMessage) if m.chat_id == 44 and "Password" in (m.text or "")]
-    assert len(cred_msgs) == 3 and "(3/3)" in cred_msgs[-1].text
+    assert len(cred_msgs) == 1                     # all 3 farms in ONE message
+    body = cred_msgs[0].text
+    assert body.count("ID: farm70_") == 3 and body.count("Password: pw") == 3 and "<pre>" in body
+    assert "ID: farm70_0\nPassword: pw0\nID: farm70_1\nPassword: pw1" in body
+    copy = [b.copy_text.text for b in buttons(cred_msgs[0]) if b.copy_text]
+    assert copy and copy[0].startswith("ID: farm70_0\nPassword: pw0")
+    # view again from "My orders"
+    oid = await core.pool.fetchval("SELECT min(id) FROM orders WHERE user_id=44 AND status='completed'")
+    await press(dp, bot, 44, f"c:ob:{oid}")
+    assert s.of(SendMessage)[-1].text.count("ID: farm70_") == 3
     assert (await wallet.get_user(core, 44))["balance"] == Decimal("5")
     assert await core.pool.fetchval("SELECT count(*) FROM farm_accounts WHERE status='sold'") == 3
     # more than the balance allows → offered to top up, nothing charged

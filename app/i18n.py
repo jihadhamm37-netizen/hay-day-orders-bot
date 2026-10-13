@@ -70,9 +70,9 @@ T: dict[str, dict[str, str]] = {
     "processing": {"ar": "⏳ <b>جاري تنفيذ الطلب…</b>", "en": "⏳ <b>Processing your order…</b>"},
     "processing_short": {"ar": "⏳ جاري تنفيذ الطلب…", "en": "⏳ Processing…"},
     "bought": {"ar": "✅ <b>تم الشراء بنجاح</b>\nرقم الطلب: <code>{ref}</code>\nالعدد: {qty} — الإجمالي: {total} USDT\n"
-                     "تم إرسال بيانات الدخول في رسائل منفصلة 👇\nيمكنك عرضها لاحقاً من «طلباتي».",
+                     "تم إرسال بيانات الدخول في الرسالة التالية 👇\nيمكنك عرضها لاحقاً من «طلباتي».",
                "en": "✅ <b>Purchase successful</b>\nOrder: <code>{ref}</code>\nQuantity: {qty} — Total: {total} USDT\n"
-                     "Login details were sent in separate messages 👇\nYou can view them again in “My orders”."},
+                     "Login details are in the next message 👇\nYou can view them again in “My orders”."},
     "bought_partial": {"ar": "⚠️ تم حجز {qty} حساب لطلبك <code>{ref}</code> لكن تعذّر إرسال بيانات {failed} منها.\n"
                              "تم إبلاغ الإدارة ويمكنك إعادة المحاولة من «طلباتي».",
                        "en": "⚠️ {qty} accounts were reserved for order <code>{ref}</code> but {failed} could not be delivered.\n"
@@ -89,6 +89,15 @@ T: dict[str, dict[str, str]] = {
                     "🌾 Type: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\n💵 Price: {price} USDT\n\n"
                     "🆔 <b>ID:</b> <code>{login}</code>\n🔑 <b>Password:</b> <code>{password}</code>\n\n"
                     "⚠️ Keep these details safe and never share them."},
+    "creds_batch": {"ar": "🎉 <b>تم شراء {n} مزارع بنجاح</b>\n\n🧾 رقم الطلب: <code>{ref}</code>\n"
+                          "🌾 النوع: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\n💵 الإجمالي: {total} USDT\n\n"
+                          "اضغط على القائمة لنسخها كاملة 👇",
+                    "en": "🎉 <b>{n} farms purchased</b>\n\n🧾 Order: <code>{ref}</code>\n"
+                          "🌾 Type: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\n💵 Total: {total} USDT\n\n"
+                          "Tap the list to copy it all 👇"},
+    "creds_batch_more": {"ar": "📋 تكملة القائمة ({a}–{b} من {n}):", "en": "📋 List continued ({a}–{b} of {n}):"},
+    "creds_safe": {"ar": "⚠️ احفظ البيانات في مكان آمن ولا تشاركها مع أحد.", "en": "⚠️ Keep these details safe and never share them."},
+    "btn_show_batch": {"ar": "🔑 عرض كل حسابات هذا الشراء ({n})", "en": "🔑 Show all accounts of this purchase ({n})"},
     "copy_id": {"ar": "📋 نسخ ID", "en": "📋 Copy ID"},
     "copy_pw": {"ar": "📋 نسخ Password", "en": "📋 Copy password"},
     "copy_all": {"ar": "📋 نسخ البيانات كاملة", "en": "📋 Copy all details"},

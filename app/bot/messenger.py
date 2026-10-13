@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
 from ..core import Core
 from ..i18n import render
 from ..services.admins import admin_recipients
-from .ui import btn, credentials_kb, credentials_text, kb
+from .ui import btn, credentials_batch_messages, credentials_kb, credentials_text, kb
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +45,20 @@ class TelegramMessenger:
             except TelegramAPIError as e:  # bad/expired file id → fall back to plain text
                 log.warning("credentials photo failed (%s), sending text", e)
         await self.bot.send_message(user_id, text, reply_markup=markup)
+
+    async def send_credentials_batch(self, user_id: int, items: list[tuple[dict, str, str]]) -> None:
+        """All accounts of one purchase in a single copyable list. Raises if Telegram refuses (not delivered)."""
+        lang = await self.user_lang(user_id)
+        photo = items[0][0].get("photo")
+        if photo:  # decorative only — failure here does not matter
+            try:
+                await self.bot.send_photo(user_id, photo)
+            except TelegramForbiddenError:
+                raise
+            except TelegramAPIError:
+                pass
+        for text, markup in credentials_batch_messages(items, lang):
+            await self.bot.send_message(user_id, text, reply_markup=markup)
 
     async def notify_user(self, user_id: int, text: str | None = None, *, key: str | None = None,
                           **params) -> bool:

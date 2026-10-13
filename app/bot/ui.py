@@ -157,3 +157,42 @@ def deposit_line_ar(d: dict) -> str:
 def tx_line_ar(x: dict) -> str:
     sign = "+" if x["amount"] > 0 else ""
     return f"• {dt(x['created_at'])} | {KIND_LABELS.get(x['kind'], x['kind'])} | <b>{sign}{fmt(x['amount'])}</b> | <code>{x['ref']}</code>"
+
+
+def credentials_lines(items: list[tuple[dict, str, str]]) -> list[str]:
+    """One 'ID: …\nPassword: …' entry per account, exactly as customers paste them."""
+    return [f"ID: {login}\nPassword: {password}" for _, login, password in items]
+
+
+def credentials_batch_messages(items: list[tuple[dict, str, str]], lang: str = "ar",
+                               limit: int = 3500) -> list[tuple[str, InlineKeyboardMarkup | None]]:
+    """Header + all accounts in one <pre> block (tap to copy); split only if it exceeds Telegram's size limit."""
+    first = items[0][0]
+    snap = first["type_snapshot"]
+    ref = first["ref"].rsplit("-", 1)[0] if first.get("batch_id") else first["ref"]
+    total = sum(o["price"] for o, _, _ in items)
+    entries = credentials_lines(items)
+    chunks: list[list[str]] = [[]]
+    size = 0
+    for en in entries:
+        if chunks[-1] and size + len(e(en)) + 1 > limit:
+            chunks.append([])
+            size = 0
+        chunks[-1].append(en)
+        size += len(e(en)) + 1
+    out = []
+    start = 1
+    n = len(entries)
+    for i, ch in enumerate(chunks):
+        block = "<pre>" + e("\n".join(ch)) + "</pre>"
+        if i == 0:
+            head = t(lang, "creds_batch", n=n, ref=e(ref), name=e(snap["name"]), lvl=snap["lvl"], barn=snap["barn"],
+                     silo=snap["silo"], total=fmt(total))
+        else:
+            head = t(lang, "creds_batch_more", a=start, b=start + len(ch) - 1, n=n)
+        text = f"{head}\n\n{block}" + (f"\n\n{t(lang, 'creds_safe')}" if i == len(chunks) - 1 else "")
+        whole = "\n".join(ch)
+        markup = kb([b for b in (copy_btn(t(lang, "copy_all"), whole),) if b]) if copy_btn("x", whole) else None
+        out.append((text, markup))
+        start += len(ch)
+    return out
