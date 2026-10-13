@@ -337,3 +337,33 @@ async def test_quantity_is_all_or_nothing_under_concurrency(core):
     assert await wallet.reconcile(core) == []
     with pytest.raises(StoreError):
         await orders.prepare(core, 1, t["id"], "10", qty=0)
+
+
+async def test_delete_type_empty_and_with_history(core):
+    empty = await catalog.create_type(core, "test", {"lvl": 10, "barn": 1, "silo": 1, "price": "1"})
+    r = await catalog.delete_type(core, "test", empty["id"])
+    assert r == {"archived": False, "accounts_removed": 0}
+    assert not await core.pool.fetchval("SELECT 1 FROM farm_types WHERE id=$1", empty["id"])
+    t = await make_type(core, 4)
+    await make_user(core, 1, "10")
+    o = await orders.prepare(core, 1, t["id"], "10")
+    await orders.purchase(core, 1, o["id"])
+    r = await catalog.delete_type(core, "test", t["id"])
+    assert r == {"archived": True, "accounts_removed": 3}
+    assert await core.pool.fetchval("SELECT count(*) FROM farm_accounts WHERE type_id=$1", t["id"]) == 1  # sold kept
+    assert (await orders.get_order(core, o["id"]))["status"] == "completed"
+    assert not await catalog.list_types(core) and not await catalog.list_types(core, for_customers=True)
+    _, login, _ = await orders.buyer_credentials(core, 1, o["id"])   # buyer still sees what he bought
+    assert login == "farm70_0"
+    with pytest.raises(StoreError):
+        await catalog.update_type(core, "test", t["id"], {"is_active": True})
+
+
+async def test_delete_type_refused_while_delivering(core):
+    t = await make_type(core, 2)
+    await make_user(core, 1, "10")
+    o = await orders.prepare(core, 1, t["id"], "10")
+    await orders._confirm(core, 1, o["id"])         # reserved, not yet delivered
+    with pytest.raises(StoreError) as e:
+        await catalog.delete_type(core, "test", t["id"])
+    assert e.value.code == "busy"

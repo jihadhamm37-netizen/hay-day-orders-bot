@@ -300,9 +300,14 @@
     const body = h("div");
     const load = async () => {
       const items = await GET("/types" + q({ lvl: f.lvl.value.trim(), barn: f.barn.value.trim(), silo: f.silo.value.trim(), price: f.price.value.trim() }));
-      body.replaceChildren(table(["النوع", "LVL", "Barn", "Silo", "السعر", "متوفر", "محجوز", "مباع", "موقوف", "البيع"],
+      const tools = (t) => h("td", { onclick: (ev) => ev.stopPropagation() }, h("div", { class: "btn-row", style: "flex-wrap:nowrap" },
+        h("a", { class: "btn sm", href: "#/type/" + t.id, title: "فتح وإضافة حسابات" }, "فتح"),
+        can("catalog") ? h("button", { class: "btn sm", onclick: () => typeForm(t) }, "تعديل") : null,
+        can("catalog") ? h("button", { class: "btn sm", onclick: async () => { await run(() => api("PATCH", "/types/" + t.id, { is_active: !t.is_active }), t.is_active ? "تم إيقاف البيع" : "تم تفعيل البيع"); load(); } }, t.is_active ? "إيقاف" : "تفعيل") : null,
+        can("catalog") ? h("button", { class: "btn sm danger", onclick: () => deleteType(t, load) }, "حذف") : null));
+      body.replaceChildren(table(["أدوات", "النوع", "LVL", "Barn", "Silo", "السعر", "متوفر", "محجوز", "مباع", "موقوف", "البيع"],
         items.map((t) => h("tr", { class: "click", onclick: () => (location.hash = "#/type/" + t.id) },
-          h("td", null, h("b", null, t.name)), h("td", { class: "num" }, t.lvl), h("td", { class: "num" }, t.barn), h("td", { class: "num" }, t.silo),
+          tools(t), h("td", null, h("b", null, t.name)), h("td", { class: "num" }, t.lvl), h("td", { class: "num" }, t.barn), h("td", { class: "num" }, t.silo),
           h("td", null, usdt(t.price)), h("td", null, h("span", { class: "pill " + (t.available_raw ? "ok" : "danger") }, t.available_raw)),
           h("td", { class: "num" }, t.reserved), h("td", { class: "num" }, t.sold), h("td", { class: "num" }, t.disabled),
           h("td", null, t.is_active ? h("span", { class: "pill ok" }, "مفعّل") : h("span", { class: "pill" }, "موقوف")))), "لا توجد أنواع — أضف أول نوع"));
@@ -313,6 +318,16 @@
     await load();
   };
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+  async function deleteType(t, after) {
+    const msg = t.total
+      ? `حذف «${t.name}»؟ سيتم حذف الحسابات غير المباعة (${t.available_raw + t.disabled}) نهائياً، ويُخفى النوع من البوت واللوحة، وتبقى المزارع المباعة (${t.sold}) وطلباتها في السجل.`
+      : `حذف «${t.name}» نهائياً؟ النوع فارغ.`;
+    if (!(await confirmBox(msg, { danger: true, okText: "حذف" }))) return;
+    const r = await run(() => api("DELETE", "/types/" + t.id));
+    toast("تم حذف النوع" + (r && r.accounts_removed ? ` و${r.accounts_removed} حساب غير مباع` : ""));
+    after();
+  }
 
   function typeForm(t) {
     const i = {
@@ -385,7 +400,7 @@
       h("div", { class: "btn-row" }, h("a", { class: "btn sm", href: "#/types" }, "→ كل الأنواع"),
         can("catalog") ? h("button", { class: "btn sm", onclick: () => typeForm(t) }, "✏️ تعديل البيانات والسعر") : null,
         can("catalog") ? h("button", { class: "btn sm", onclick: async () => { await run(() => api("PATCH", "/types/" + id, { is_active: !t.is_active }), t.is_active ? "تم إيقاف البيع" : "تم تفعيل البيع"); route(); } }, t.is_active ? "⏸ إيقاف البيع" : "▶️ تفعيل البيع") : null,
-        can("catalog") && !t.total ? h("button", { class: "btn sm danger", onclick: async () => { if (await confirmBox("حذف هذا النوع نهائياً؟", { danger: true })) { await run(() => api("DELETE", "/types/" + id), "تم الحذف"); location.hash = "#/types"; } } }, "🗑 حذف") : null),
+        can("catalog") ? h("button", { class: "btn sm danger", onclick: () => deleteType(t, () => { location.hash = "#/types"; }) }, "حذف النوع") : null),
       h("div", { class: "grid kpis" }, kpi("LVL", t.lvl), kpi("Barn / Silo", `${t.barn} / ${t.silo}`), kpi("السعر", money(t.price), "USDT"),
         kpi("متوفر", t.available_raw, "أسعار: " + tierText, t.available_raw ? "" : "danger"), kpi("مباع", t.sold), kpi("الحالة", t.is_active ? "مفعّل" : "موقوف")),
       photoCard("صورة المزرعة", "تظهر للزبون عند فتح هذا النوع في البوت، وتُرسل مع بيانات الدخول إذا لم يكن للحساب صورة خاصة.",

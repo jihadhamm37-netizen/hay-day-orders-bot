@@ -207,8 +207,7 @@ def create_app(core: Core, bot: Bot | None = None) -> FastAPI:
     @api.delete("/types/{type_id}")
     async def type_delete(type_id: int, request: Request, admin=Depends(require("catalog")),
                           core: Core = Depends(get_core)):
-        await catalog.delete_type(core, actor_of(admin), type_id, client_ip(request))
-        return ok()
+        return ok(await catalog.delete_type(core, actor_of(admin), type_id, client_ip(request)))
 
     # ------------------------------------------------------------ photos
     async def _upload(request: Request, admin: dict, file: UploadFile) -> str:

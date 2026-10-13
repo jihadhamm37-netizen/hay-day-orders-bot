@@ -266,8 +266,7 @@ async def _type_view(core: Core, type_id: int):
         [btn("تفعيل البيع" if not t["is_active"] else "إيقاف البيع", f"a:tt:{type_id}"),
          btn("تغيير الصورة" if t.get("photo_file_id") else "إضافة صورة", f"a:tph:{type_id}")],
     ]
-    if t["total"] == 0:
-        rows.append([btn("حذف النوع", f"a:td:{type_id}")])
+    rows.append([btn("حذف النوع", f"a:tdq:{type_id}", "danger")])
     rows.append([btn("الأنواع", "a:types")])
     return text, kb(*rows)
 
@@ -294,16 +293,34 @@ async def type_toggle(cb: CallbackQuery, core: Core, role: str):
     await reply(cb, text, markup)
 
 
+@router.callback_query(F.data.startswith("a:tdq:"))
+async def type_delete_ask(cb: CallbackQuery, core: Core, role: str):
+    if not await need(cb, role, "catalog"):
+        return
+    type_id = int(cb.data.split(":")[2])
+    t = await catalog.get_type(core, type_id)
+    if not t:
+        await cb.answer("النوع غير موجود.", show_alert=True)
+        return
+    note = ("سيتم حذف الحسابات غير المباعة ({n}) نهائياً، ويُخفى النوع من كل القوائم، "
+            "وتبقى المزارع المباعة وطلباتها في السجل.").format(n=t["available_raw"] + t["disabled"]) if t["total"] \
+        else "النوع فارغ وسيُحذف نهائياً."
+    await reply(cb, f"<b>حذف النوع «{e(t['name'])}»؟</b>\n\n{note}",
+                kb([btn("نعم، احذف", f"a:td:{type_id}", "danger"), btn("إلغاء", f"a:t:{type_id}")]))
+    await cb.answer()
+
+
 @router.callback_query(F.data.startswith("a:td:"))
 async def type_delete(cb: CallbackQuery, core: Core, role: str):
     if not await need(cb, role, "catalog"):
         return
     try:
-        await catalog.delete_type(core, actor(cb.from_user.id), int(cb.data.split(":")[2]))
+        r = await catalog.delete_type(core, actor(cb.from_user.id), int(cb.data.split(":")[2]))
     except StoreError as ex:
         await cb.answer(ex.message, show_alert=True)
         return
-    await cb.answer("تم الحذف")
+    await cb.answer("تم حذف النوع" + (f" وحذف {r['accounts_removed']} حساب غير مباع" if r["accounts_removed"] else ""),
+                    show_alert=True)
     text, markup = await _types_list(core)
     await reply(cb, text, markup)
 

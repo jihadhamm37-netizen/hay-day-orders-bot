@@ -49,7 +49,7 @@ def parse_filter(text: str) -> dict[str, tuple[str, Decimal]]:
 
 async def list_types(core: Core, *, include_inactive: bool = True, filters: dict | None = None,
                      for_customers: bool = False) -> list[dict]:
-    q = _TYPE_STATS + " WHERE 1=1"
+    q = _TYPE_STATS + " WHERE NOT t.is_deleted"
     args: list[Any] = []
     if not include_inactive or for_customers:
         q += " AND t.is_active"
@@ -121,7 +121,7 @@ async def update_type(core: Core, actor: str, type_id: int, data: dict, ip: str 
         raise StoreError("bad_input", "لا توجد تعديلات.")
     async with core.pool.acquire() as conn, conn.transaction():
         old = await conn.fetchrow("SELECT * FROM farm_types WHERE id=$1 FOR UPDATE", type_id)
-        if not old:
+        if not old or old["is_deleted"]:
             raise StoreError("not_found", "النوع غير موجود.")
         sets = ", ".join(f"{k}=${i+2}" for i, k in enumerate(f))
         r = await conn.fetchrow(f"UPDATE farm_types SET {sets}, updated_at=now() WHERE id=$1 RETURNING *",
@@ -131,15 +131,36 @@ async def update_type(core: Core, actor: str, type_id: int, data: dict, ip: str 
     return dict(r)
 
 
-async def delete_type(core: Core, actor: str, type_id: int, ip: str | None = None) -> None:
+async def delete_type(core: Core, actor: str, type_id: int, ip: str | None = None) -> dict:
+    """Delete a farm type.
+
+    Never used → erased completely. Has sales history → its unsold accounts are erased, the type is hidden
+    everywhere (archived) and sold accounts/orders stay in the records. Refused while an account is reserved
+    (a purchase is being delivered).
+    """
     async with core.pool.acquire() as conn, conn.transaction():
-        if await conn.fetchval("SELECT 1 FROM farm_accounts WHERE type_id=$1 LIMIT 1", type_id) or \
-           await conn.fetchval("SELECT 1 FROM orders WHERE type_id=$1 LIMIT 1", type_id):
-            raise StoreError("in_use", "لا يمكن حذف نوع له حسابات أو طلبات. أوقفه عن البيع بدلاً من ذلك.")
-        r = await conn.execute("DELETE FROM farm_types WHERE id=$1", type_id)
-        if r.endswith("0"):
+        t = await conn.fetchrow("SELECT * FROM farm_types WHERE id=$1 AND NOT is_deleted FOR UPDATE", type_id)
+        if not t:
             raise StoreError("not_found", "النوع غير موجود.")
-        await audit(conn, actor, "type.delete", "farm_type", type_id, None, ip)
+        if await conn.fetchval("SELECT 1 FROM farm_accounts WHERE type_id=$1 AND status='reserved' LIMIT 1", type_id):
+            raise StoreError("busy", "يوجد حساب محجوز قيد التسليم في هذا النوع. حاول بعد قليل أو راجع الطلبات.")
+        removed = await conn.fetchval(
+            "WITH d AS (DELETE FROM farm_accounts a WHERE a.type_id=$1 AND a.status IN ('available','disabled') "
+            "AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.account_id=a.id) RETURNING 1) SELECT count(*) FROM d",
+            type_id)
+        history = await conn.fetchval("SELECT 1 FROM orders WHERE type_id=$1 LIMIT 1", type_id) or \
+            await conn.fetchval("SELECT 1 FROM farm_accounts WHERE type_id=$1 LIMIT 1", type_id)
+        if history:
+            await conn.execute("UPDATE farm_types SET is_deleted=TRUE, is_active=FALSE, deleted_at=now(), "
+                               "updated_at=now() WHERE id=$1", type_id)
+            # unconfirmed orders for this type can no longer be completed
+            await conn.execute("UPDATE orders SET status='cancelled', failure_reason='تم حذف النوع', updated_at=now() "
+                               "WHERE type_id=$1 AND status='pending'", type_id)
+        else:
+            await conn.execute("DELETE FROM farm_types WHERE id=$1", type_id)
+        await audit(conn, actor, "type.delete", "farm_type", type_id,
+                    {"name": t["name"], "archived": bool(history), "accounts_removed": removed}, ip)
+    return {"archived": bool(history), "accounts_removed": removed}
 
 
 async def price_tiers(core: Core, type_id: int) -> list[dict]:
@@ -274,7 +295,7 @@ async def validate_accounts(core: Core, items: list[dict]) -> dict:
 
 async def add_accounts(core: Core, actor: str, type_id: int, items: list[dict], ip: str | None = None) -> dict:
     """Validate then insert. Race-safe: ON CONFLICT on login_hash skips anything added meanwhile."""
-    t = await core.pool.fetchrow("SELECT id FROM farm_types WHERE id=$1", type_id)
+    t = await core.pool.fetchrow("SELECT id FROM farm_types WHERE id=$1 AND NOT is_deleted", type_id)
     if not t:
         raise StoreError("not_found", "النوع غير موجود.")
     report = await validate_accounts(core, items)
