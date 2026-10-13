@@ -180,8 +180,8 @@ T: dict[str, dict[str, str]] = {
 SEP = "━━━━━━━━━━━━━━━━"
 
 T.update({
-    "home": {"ar": "<b>{store}</b>\n{welcome}\n" + SEP + "\nرصيدك      <b>{balance} USDT</b>\nالمزارع المتوفرة      <b>{stock}</b>\n" + SEP + "\nاختر من القائمة بالأسفل",
-             "en": "<b>{store}</b>\n{welcome}\n" + SEP + "\nBalance      <b>{balance} USDT</b>\nFarms in stock      <b>{stock}</b>\n" + SEP + "\nChoose from the menu below"},
+    "home": {"ar": "{welcome}\n" + SEP + "\nرصيدك: <b>{balance} USDT</b>\nالمزارع المتوفرة: <b>{stock}</b>",
+             "en": "{welcome}\n" + SEP + "\nBalance: <b>{balance} USDT</b>\nFarms in stock: <b>{stock}</b>"},
     "types_head": {"ar": "<b>المزارع المتوفرة</b>\n" + SEP + "\nاختر المزرعة لعرض التفاصيل والشراء",
                    "en": "<b>Available farms</b>\n" + SEP + "\nPick a farm to see details and buy"},
     "page": {"ar": "الصفحة {p} من {n}", "en": "Page {p} of {n}"},
