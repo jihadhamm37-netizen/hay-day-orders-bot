@@ -210,6 +210,72 @@ def create_app(core: Core, bot: Bot | None = None) -> FastAPI:
         await catalog.delete_type(core, actor_of(admin), type_id, client_ip(request))
         return ok()
 
+    # ------------------------------------------------------------ photos
+    async def _upload(request: Request, admin: dict, file: UploadFile) -> str:
+        data = await file.read(10_000_001)
+        if len(data) > 10_000_000:
+            raise StoreError("too_big", "الصورة أكبر من 10MB.")
+        if not (file.content_type or "").startswith("image/"):
+            raise StoreError("bad_input", "الملف ليس صورة.")
+        chat = admin.get("telegram_id") or (sorted(core.config.owner_ids)[0] if core.config.owner_ids else None)
+        if not chat:
+            chat = await core.pool.fetchval("SELECT telegram_id FROM admins WHERE telegram_id IS NOT NULL LIMIT 1")
+        if not chat or not core.messenger:
+            raise StoreError("no_chat", "اربط حسابك بتيليجرام أولاً (/claim أو من صفحة المشرفين) لرفع الصور.")
+        try:
+            return await core.messenger.upload_photo(chat, data, file.filename or "farm.jpg")
+        except Exception as ex:
+            log.warning("photo upload failed: %s", ex)
+            raise StoreError("upload_failed", "تعذر رفع الصورة إلى تيليجرام. تأكد أنك أرسلت /start للبوت.")
+
+    async def _stream_photo(request: Request, file_id: str | None):
+        b: Bot | None = request.app.state.bot
+        if not file_id or b is None:
+            raise HTTPException(404, "لا توجد صورة.")
+        try:
+            f = await b.get_file(file_id)
+            buf = await b.download_file(f.file_path)
+        except Exception:
+            raise HTTPException(404, "تعذر تحميل الصورة.")
+        return Response(buf.read(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
+
+    @api.post("/types/{type_id}/photo")
+    async def type_photo(type_id: int, request: Request, file: UploadFile = File(...),
+                         admin=Depends(require("catalog")), core: Core = Depends(get_core)):
+        fid = await _upload(request, admin, file)
+        await catalog.set_type_photo(core, actor_of(admin), type_id, fid, client_ip(request))
+        return ok()
+
+    @api.delete("/types/{type_id}/photo")
+    async def type_photo_del(type_id: int, request: Request, admin=Depends(require("catalog")),
+                             core: Core = Depends(get_core)):
+        await catalog.set_type_photo(core, actor_of(admin), type_id, None, client_ip(request))
+        return ok()
+
+    @api.get("/types/{type_id}/photo")
+    async def type_photo_get(type_id: int, request: Request, _=Depends(require("view")), core: Core = Depends(get_core)):
+        return await _stream_photo(request, await core.pool.fetchval(
+            "SELECT photo_file_id FROM farm_types WHERE id=$1", type_id))
+
+    @api.post("/accounts/{account_id}/photo")
+    async def account_photo(account_id: int, request: Request, file: UploadFile = File(...),
+                            admin=Depends(require("catalog")), core: Core = Depends(get_core)):
+        fid = await _upload(request, admin, file)
+        await catalog.set_account_photo(core, actor_of(admin), account_id, fid, client_ip(request))
+        return ok()
+
+    @api.delete("/accounts/{account_id}/photo")
+    async def account_photo_del(account_id: int, request: Request, admin=Depends(require("catalog")),
+                                core: Core = Depends(get_core)):
+        await catalog.set_account_photo(core, actor_of(admin), account_id, None, client_ip(request))
+        return ok()
+
+    @api.get("/accounts/{account_id}/photo")
+    async def account_photo_get(account_id: int, request: Request, _=Depends(require("view")),
+                                core: Core = Depends(get_core)):
+        return await _stream_photo(request, await core.pool.fetchval(
+            "SELECT photo_file_id FROM farm_accounts WHERE id=$1", account_id))
+
     # ---------------------------------------------------------- accounts
     @api.get("/accounts")
     async def accounts(type_id: int | None = None, status: str | None = None, search: str | None = None,

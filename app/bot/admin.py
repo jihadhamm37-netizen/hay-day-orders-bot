@@ -13,7 +13,8 @@ from ..core import Core, StoreError, fmt
 from ..services import admins, backup, catalog, deposits, orders, stats, system, wallet
 from ..services.deposits import STATUS_LABELS as DEP_LABELS
 from ..services.orders import STATUS_LABELS as ORD_LABELS
-from .ui import BTN_ADMIN, btn, deposit_line, dt, e, kb, order_line, tx_line, type_line
+from .ui import btn, dt, e, kb, menu_labels, type_line
+from .ui import deposit_line_ar as deposit_line, order_line_ar as order_line, tx_line_ar as tx_line
 
 router = Router(name="admin")
 
@@ -66,6 +67,9 @@ class A(StatesGroup):
     user_reason = State()
     setting_value = State()
     type_search = State()
+    type_photo = State()
+    acc_photo = State()
+    icon = State()
 
 
 async def reply(target: Message | CallbackQuery, text: str, markup=None, edit: bool = True):
@@ -105,7 +109,7 @@ async def _menu(core: Core, role: str):
     return text, kb(*rows)
 
 
-@router.message(F.text == BTN_ADMIN)
+@router.message(F.text.in_(menu_labels("admin")))
 @router.message(Command("admin"))
 async def admin_menu(message: Message, state: FSMContext, core: Core, role: str):
     await state.clear()
@@ -259,7 +263,8 @@ async def _type_view(core: Core, type_id: int):
         [btn("📋 الحسابات المتوفرة", f"a:tl:{type_id}:available:0"), btn("💰 المباعة", f"a:tl:{type_id}:sold:0")],
         [btn("⏸ الموقوفة", f"a:tl:{type_id}:disabled:0"), btn("🔒 المحجوزة", f"a:tl:{type_id}:reserved:0")],
         [btn("💲 تعديل السعر", f"a:tp:{type_id}"), btn("✏️ تعديل البيانات", f"a:te:{type_id}")],
-        [btn("▶️ تفعيل البيع" if not t["is_active"] else "⏸ إيقاف البيع", f"a:tt:{type_id}")],
+        [btn("▶️ تفعيل البيع" if not t["is_active"] else "⏸ إيقاف البيع", f"a:tt:{type_id}"),
+         btn("🖼 تغيير الصورة" if t.get("photo_file_id") else "🖼 إضافة صورة", f"a:tph:{type_id}")],
     ]
     if t["total"] == 0:
         rows.append([btn("🗑 حذف النوع", f"a:td:{type_id}")])
@@ -466,6 +471,7 @@ async def _account_view(core: Core, account_id: int):
                      btn("💲 سعر خاص", f"a:acp:{a['id']}")])
         if not a["order_ref"]:
             rows.append([btn("🗑 حذف", f"a:acd:{a['id']}")])
+        rows.append([btn("🖼 صورة هذا الحساب" + (" ✅" if a.get("has_photo") else ""), f"a:acph:{a['id']}")])
     rows.append([btn("↩️ النوع", f"a:t:{a['type_id']}")])
     return text, kb(*rows)
 
@@ -927,7 +933,10 @@ async def settings_cb(cb: CallbackQuery, state: FSMContext, core: Core, role: st
     s = await system.get_settings(core, fresh=True)
     lines = ["⚙️ <b>الإعدادات</b>", ""]
     rows = []
+    rows.append([btn("🎨 أيقونات أزرار القائمة", "a:icons")])
     for key, (label, kind) in system.SETTINGS_SCHEMA.items():
+        if kind == "icon":
+            continue
         val = s.get(key, "")
         if kind == "bool":
             shown = "✅ نعم" if val == "true" else "❌ لا"
@@ -974,6 +983,136 @@ async def setting_save(message: Message, state: FSMContext, core: Core):
         return
     await state.clear()
     await message.answer("✅ تم الحفظ.", reply_markup=kb([btn("⚙️ الإعدادات", "a:set")]))
+
+
+# ================================================================= photos
+@router.callback_query(F.data.startswith("a:tph:"))
+async def type_photo_ask(cb: CallbackQuery, state: FSMContext, core: Core, role: str):
+    if not await need(cb, role, "catalog"):
+        return
+    type_id = int(cb.data.split(":")[2])
+    await state.set_state(A.type_photo)
+    await state.update_data(type_id=type_id)
+    has = await core.pool.fetchval("SELECT photo_file_id IS NOT NULL FROM farm_types WHERE id=$1", type_id)
+    await cb.message.answer("🖼 أرسل الآن صورة المزرعة لهذا النوع (تظهر للزبون عند فتح النوع وتُرسل مع بيانات "
+                            "الحساب إذا لم يكن للحساب صورة خاصة).",
+                            reply_markup=kb([btn("🗑 حذف الصورة الحالية", f"a:tphd:{type_id}", "danger")] if has else []))
+    await cb.answer()
+
+
+@router.message(A.type_photo, F.photo)
+async def type_photo_save(message: Message, state: FSMContext, core: Core):
+    data = await state.get_data()
+    await catalog.set_type_photo(core, actor(message.from_user.id), data["type_id"], message.photo[-1].file_id)
+    await state.clear()
+    text, markup = await _type_view(core, data["type_id"])
+    await message.answer("✅ تم حفظ صورة النوع.\n\n" + text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("a:tphd:"))
+async def type_photo_delete(cb: CallbackQuery, state: FSMContext, core: Core, role: str):
+    if not await need(cb, role, "catalog"):
+        return
+    type_id = int(cb.data.split(":")[2])
+    await catalog.set_type_photo(core, actor(cb.from_user.id), type_id, None)
+    await state.clear()
+    await cb.answer("تم حذف الصورة")
+    text, markup = await _type_view(core, type_id)
+    await reply(cb, text, markup, edit=False)
+
+
+@router.callback_query(F.data.startswith("a:acph:"))
+async def acc_photo_ask(cb: CallbackQuery, state: FSMContext, role: str):
+    if not await need(cb, role, "catalog"):
+        return
+    acc_id = int(cb.data.split(":")[2])
+    await state.set_state(A.acc_photo)
+    await state.update_data(account_id=acc_id)
+    await cb.message.answer("🖼 أرسل صورة هذه المزرعة (تُرسل للمشتري مع بيانات الدخول).\nأرسل <code>-</code> لحذف الصورة.")
+    await cb.answer()
+
+
+@router.message(A.acc_photo, F.photo | (F.text == "-"))
+async def acc_photo_save(message: Message, state: FSMContext, core: Core):
+    data = await state.get_data()
+    await catalog.set_account_photo(core, actor(message.from_user.id), data["account_id"],
+                                    message.photo[-1].file_id if message.photo else None)
+    await state.clear()
+    text, markup = await _account_view(core, data["account_id"])
+    await message.answer("✅ تم.\n\n" + text, reply_markup=markup)
+
+
+# ================================================================== icons
+ICON_KEYS = {"buy": "شراء المزارع", "wallet": "محفظتي", "topup": "شحن الرصيد", "orders": "طلباتي",
+             "support": "الدعم الفني", "lang": "اللغة"}
+
+
+@router.callback_query(F.data == "a:icons")
+async def icons_menu(cb: CallbackQuery, state: FSMContext, core: Core, role: str):
+    if not await need(cb, role, "settings"):
+        return
+    await state.clear()
+    s = await system.get_settings(core, fresh=True)
+    rows = [[btn(f"{'✅' if s.get('icon_' + k) else '➕'} {label}", f"a:icon:{k}")] for k, label in ICON_KEYS.items()]
+    rows.append([btn("👁 معاينة القائمة", "a:iconprev"), btn("🧹 حذف كل الأيقونات", "a:iconclr", "danger")])
+    rows.append([btn("↩️ الإعدادات", "a:set")])
+    await reply(cb, "🎨 <b>أيقونات أزرار القائمة</b>\n\n"
+                    "الأزرار ملوّنة تلقائياً. ولإظهار <b>أيقونة صورة حقيقية</b> بجانب كل زر: اختر الزر ثم أرسل "
+                    "<b>إيموجي مميز (Custom Emoji)</b> من أي حزمة — مثلاً أيقونة محفظة أو بطاقة شحن أو سماعة دعم.\n\n"
+                    "⚠️ شرط من تيليجرام: صاحب البوت يجب أن يكون مشتركاً في <b>Telegram Premium</b>. "
+                    "إذا لم يكن كذلك يعود البوت تلقائياً للأيقونات العادية دون أي عطل.", kb(*rows))
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("a:icon:"))
+async def icon_ask(cb: CallbackQuery, state: FSMContext, role: str):
+    if not await need(cb, role, "settings"):
+        return
+    key = cb.data.split(":")[2]
+    await state.set_state(A.icon)
+    await state.update_data(icon_key=key)
+    await cb.message.answer(f"أرسل الآن إيموجي مميز (Custom Emoji) لزر «{ICON_KEYS[key]}»، أو <code>-</code> لإزالته.")
+    await cb.answer()
+
+
+@router.message(A.icon)
+async def icon_save(message: Message, state: FSMContext, core: Core, role: str):
+    data = await state.get_data()
+    key = data["icon_key"]
+    if (message.text or "").strip() == "-":
+        value = ""
+    else:
+        ids = [en.custom_emoji_id for en in (message.entities or []) if en.type == "custom_emoji"]
+        if not ids and message.sticker and message.sticker.custom_emoji_id:
+            ids = [message.sticker.custom_emoji_id]
+        if not ids:
+            await message.answer("⚠️ لم أجد إيموجي مميز في رسالتك. أرسل Custom Emoji (من الإيموجي المتحركة/المميزة) "
+                                 "وليس إيموجي عادي، أو <code>-</code> للإزالة.")
+            return
+        value = ids[0]
+    await system.update_settings(core, actor(message.from_user.id), {f"icon_{key}": value})
+    core.icons_broken = False
+    await state.clear()
+    await message.answer("✅ تم الحفظ.", reply_markup=kb([btn("🎨 الأيقونات", "a:icons"), btn("👁 معاينة", "a:iconprev")]))
+
+
+@router.callback_query(F.data == "a:iconclr")
+async def icons_clear(cb: CallbackQuery, core: Core, role: str):
+    if not await need(cb, role, "settings"):
+        return
+    await system.update_settings(core, actor(cb.from_user.id), {f"icon_{k}": "" for k in ICON_KEYS})
+    await cb.answer("تم حذف الأيقونات")
+
+
+@router.callback_query(F.data == "a:iconprev")
+async def icons_preview(cb: CallbackQuery, core: Core, role: str, lang: str):
+    from .customer import send_menu
+    core.icons_broken = False
+    await cb.answer()
+    m = await send_menu(cb.message, core, "👁 هذه هي القائمة كما يراها الزبون 👇", lang, True)
+    if getattr(core, "icons_broken", False):
+        await cb.message.answer("⚠️ رفض تيليجرام الأيقونات المميزة (يتطلب Telegram Premium لصاحب البوت)، "
+                                "لذلك تظهر الأيقونات العادية الملوّنة.")
 
 
 # ============================================================ audit/backup

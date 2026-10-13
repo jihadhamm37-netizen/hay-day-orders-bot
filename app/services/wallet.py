@@ -20,12 +20,13 @@ KIND_LABELS = {
 
 
 # -------------------------------------------------------------------- users
-async def touch_user(core: Core, user_id: int, username: str | None, first_name: str | None) -> dict:
+async def touch_user(core: Core, user_id: int, username: str | None, first_name: str | None,
+                     lang: str = "ar") -> dict:
     r = await core.pool.fetchrow(
-        "INSERT INTO users(id, username, first_name) VALUES($1,$2,$3) "
+        "INSERT INTO users(id, username, first_name, lang) VALUES($1,$2,$3,$4) "
         "ON CONFLICT (id) DO UPDATE SET username=EXCLUDED.username, first_name=EXCLUDED.first_name, "
         "last_seen_at=now() RETURNING *",
-        user_id, username, first_name)
+        user_id, username, first_name, lang if lang in ("ar", "en") else "ar")
     return dict(r)
 
 
@@ -111,10 +112,8 @@ async def admin_adjust(core: Core, actor: str, user_id: int, amount: Any, reason
                     {"amount": amt, "reason": reason, "tx": tx["ref"], "balance_after": tx["balance_after"]}, ip)
     if core.messenger:
         sign = "+" if amt > 0 else ""
-        await core.messenger.notify_user(
-            user_id,
-            f"💼 تم تعديل رصيدك من الإدارة: <b>{sign}{amt} USDT</b>\n"
-            f"السبب: {_esc(reason)}\nالرصيد الحالي: <b>{tx['balance_after']} USDT</b>\nرقم العملية: <code>{tx['ref']}</code>")
+        await core.messenger.notify_user(user_id, key="n_adjust", amount=f"{sign}{amt}", reason=_esc(reason),
+                                         balance=tx["balance_after"], ref=tx["ref"])
     return tx
 
 
@@ -143,3 +142,9 @@ async def reconcile(core: Core) -> list[dict]:
 
 def _esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+async def set_lang(core: Core, user_id: int, lang: str) -> None:
+    if lang not in ("ar", "en"):
+        raise StoreError("bad_input", "لغة غير مدعومة.")
+    await core.pool.execute("UPDATE users SET lang=$2, lang_chosen=TRUE WHERE id=$1", user_id, lang)

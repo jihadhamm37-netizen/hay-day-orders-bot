@@ -372,7 +372,7 @@
       const all = h("input", { type: "checkbox", onchange: (e) => { items.forEach((a) => e.target.checked ? selected.add(a.id) : selected.delete(a.id)); loadAcc(); } });
       accBox.replaceChildren(table([can("catalog") ? all : "", "#", "ID (مخفي)", "السعر", "الحالة", "الطلب", "أُضيف", ""], items.map((a) => h("tr", null,
         h("td", null, can("catalog") && ["available", "disabled"].includes(a.status) ? h("input", { type: "checkbox", checked: selected.has(a.id), onchange: (e) => { e.target.checked ? selected.add(a.id) : selected.delete(a.id); renderBulk(); } }) : ""),
-        h("td", { class: "num" }, a.id), h("td", { class: "mono" }, a.login_hint),
+        h("td", { class: "num" }, a.id), h("td", { class: "mono" }, a.login_hint, a.has_photo ? " 🖼" : ""),
         h("td", null, usdt(a.effective_price), a.custom_price ? h("span", { class: "pill info", style: "margin-inline-start:6px" }, "خاص") : null),
         h("td", null, pill(ACC, a.status)), h("td", { class: "mono" }, a.order_ref || "—"), h("td", null, dt(a.created_at)),
         h("td", null, can("catalog") && ["available", "disabled"].includes(a.status) ? h("button", { class: "btn sm", onclick: () => accountForm(a, () => ROUTES.type(id)) }, "تعديل") : ""))),
@@ -388,6 +388,8 @@
         can("catalog") && !t.total ? h("button", { class: "btn sm danger", onclick: async () => { if (await confirmBox("حذف هذا النوع نهائياً؟", { danger: true })) { await run(() => api("DELETE", "/types/" + id), "تم الحذف"); location.hash = "#/types"; } } }, "🗑 حذف") : null),
       h("div", { class: "grid kpis" }, kpi("LVL", t.lvl), kpi("Barn / Silo", `${t.barn} / ${t.silo}`), kpi("السعر", money(t.price), "USDT"),
         kpi("متوفر", t.available_raw, "أسعار: " + tierText, t.available_raw ? "" : "danger"), kpi("مباع", t.sold), kpi("الحالة", t.is_active ? "مفعّل" : "موقوف")),
+      photoCard("صورة المزرعة", "تظهر للزبون عند فتح هذا النوع في البوت، وتُرسل مع بيانات الدخول إذا لم يكن للحساب صورة خاصة.",
+        `/api/types/${id}/photo`, !!t.photo_file_id, (fd) => api("POST", `/types/${id}/photo`, fd, true), () => api("DELETE", `/types/${id}/photo`)),
       can("catalog") ? importCard(id) : null,
       h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "الحسابات"), tabs, h("span", { style: "flex:1" }), searchIn), h("div", { class: "card-b", style: "padding-bottom:0" }, bulkBar), accBox));
     await loadAcc();
@@ -404,6 +406,14 @@
       h("p", { class: "small muted" }, "استبدال بيانات الدخول (تُشفّر فوراً ولا تُعرض مرة أخرى):"), h("div", { class: "form-grid" }, field("ID جديد", login), field("Password جديدة", pass)),
       h("div", { class: "btn-row" }, h("button", { class: "btn primary", type: "submit" }, "حفظ"),
         h("button", { class: "btn danger", type: "button", onclick: async () => { if (await confirmBox("حذف هذا الحساب نهائياً؟", { danger: true })) { await run(() => api("DELETE", "/accounts/" + a.id), "تم الحذف"); m.close(); done(); } } }, "حذف")));
+    const pfile = h("input", { type: "file", accept: "image/*" });
+    pfile.addEventListener("change", async () => { if (!pfile.files[0]) return; const fd = new FormData(); fd.append("file", pfile.files[0]);
+      await run(() => api("POST", `/accounts/${a.id}/photo`, fd, true), "تم رفع صورة الحساب"); m.close(); done(); });
+    form.append(h("div", { class: "card", style: "padding:12px;margin-top:12px" }, h("p", { class: "small muted", style: "margin-top:0" },
+      "صورة خاصة بهذه المزرعة تُرسل للمشتري مع بيانات الدخول" + (a.has_photo ? " — ✅ يوجد صورة" : "")),
+      h("div", { class: "btn-row" }, h("label", { class: "btn sm" }, "⬆️ رفع صورة", h("span", { style: "display:none" }, pfile)),
+        a.has_photo ? h("a", { class: "btn sm", href: `/api/accounts/${a.id}/photo`, target: "_blank" }, "عرض") : null,
+        a.has_photo ? h("button", { class: "btn sm danger", type: "button", onclick: async () => { await run(() => api("DELETE", `/accounts/${a.id}/photo`), "تم الحذف"); m.close(); done(); } }, "حذف الصورة") : null)));
     const m = modal(`حساب #${a.id} — ${a.login_hint}`, form);
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -413,6 +423,21 @@
       await run(() => api("PATCH", "/accounts/" + a.id, body), "تم الحفظ");
       m.close(); done();
     });
+  }
+
+  function photoCard(title, hint, url, has, onUpload, onDelete) {
+    const file = h("input", { type: "file", accept: "image/*" });
+    const img = has ? h("img", { class: "proof", style: "max-height:240px;object-fit:contain", src: url + "?v=" + Date.now(), alt: title,
+      onerror: (e) => e.target.replaceWith(h("div", { class: "notice warn" }, "تعذر تحميل الصورة من تيليجرام.")) }) : h("div", { class: "empty" }, "لا توجد صورة بعد");
+    file.addEventListener("change", async () => {
+      if (!file.files[0]) return;
+      const fd = new FormData(); fd.append("file", file.files[0]);
+      await run(() => onUpload(fd), "تم رفع الصورة"); route();
+    });
+    return h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, title), h("span", { style: "flex:1" }),
+      can("catalog") ? h("label", { class: "btn sm primary" }, "⬆️ رفع صورة", h("span", { style: "display:none" }, file)) : null,
+      can("catalog") && has ? h("button", { class: "btn sm danger", onclick: async () => { await run(onDelete, "تم الحذف"); route(); } }, "حذف") : null),
+      h("div", { class: "card-b" }, h("p", { class: "small muted", style: "margin-top:0" }, hint), img));
   }
 
   function importCard(typeId) {
@@ -629,14 +654,17 @@
     const items = await GET("/settings");
     const inputs = {};
     const groups = { "الدفع عبر Binance Pay": ["binance_pay_id", "payment_instructions", "min_deposit", "max_deposit", "require_txid", "auto_verify_enabled"],
-      "رسائل البوت والدعم": ["welcome_text", "support_text", "support_username"], "المخزون": ["hide_out_of_stock", "low_stock_threshold"] };
+      "رسائل البوت والدعم": ["welcome_text", "support_text", "support_username"],
+      "النصوص باللغة الإنجليزية": ["welcome_text_en", "support_text_en", "payment_instructions_en"],
+      "المخزون والشراء": ["hide_out_of_stock", "low_stock_threshold", "max_quantity"],
+      "أيقونات أزرار القائمة (Custom Emoji ID)": ["icon_buy", "icon_wallet", "icon_topup", "icon_orders", "icon_support", "icon_lang"] };
     const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
     const cards = Object.entries(groups).map(([title, keys]) => h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, title)), h("div", { class: "card-b" },
       keys.filter((k) => byKey[k]).map((k) => {
         const s = byKey[k];
         let el;
         if (s.kind === "bool") { el = h("input", { type: "checkbox", checked: s.value === "true" }); inputs[k] = el; return h("label", { class: "switch f" }, el, s.label); }
-        if (s.kind === "longtext") { el = h("textarea"); el.value = s.value; } else el = h("input", { type: "text", value: s.value, dir: ["binance_pay_id", "support_username", "min_deposit", "max_deposit", "low_stock_threshold"].includes(k) ? "ltr" : "auto" });
+        if (s.kind === "longtext") { el = h("textarea", { dir: k.endsWith("_en") ? "ltr" : "auto" }); el.value = s.value; } else el = h("input", { type: "text", value: s.value, dir: ["binance_pay_id", "support_username", "min_deposit", "max_deposit", "low_stock_threshold", "max_quantity"].includes(k) || s.kind === "icon" ? "ltr" : "auto", placeholder: s.kind === "icon" ? "مثال: 5368324170671202286 — أو استخدم 🛠 ← ⚙️ ← 🎨 في البوت" : "" });
         inputs[k] = el;
         return field(s.label, el);
       }))));

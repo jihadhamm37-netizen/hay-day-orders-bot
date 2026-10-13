@@ -13,7 +13,9 @@ from aiogram.methods import (AnswerCallbackQuery, EditMessageCaption, EditMessag
 from aiogram.types import CallbackQuery, Chat, Message, PhotoSize, Update, User
 
 from app.bot.setup import attach_messenger, create_bot, create_dispatcher
-from app.bot.ui import BTN_BUY, BTN_TOPUP, BTN_WALLET
+from app.i18n import t as tr
+
+BTN_BUY, BTN_TOPUP, BTN_WALLET = "🛒 " + tr("ar", "btn_buy"), "💳 " + tr("ar", "btn_topup"), "💼 " + tr("ar", "btn_wallet")
 from app.services import deposits, wallet
 from tests.conftest import make_type, make_user
 
@@ -91,12 +93,16 @@ async def test_buy_flow_delivers_credentials_with_copy_buttons(env):
     t = await make_type(core, 3, price="10")
     await make_user(core, 42, "25")
     await send_text(dp, bot, 42, "/start")
-    assert s.of(SendMessage)[-1].reply_markup.keyboard  # main reply keyboard
+    assert s.of(SendMessage)[-2].reply_markup.keyboard  # main reply keyboard
+    assert any(b.callback_data == "c:lang:en" for b in buttons(s.of(SendMessage)[-1]))  # first visit: language picker
     await send_text(dp, bot, 42, BTN_BUY)
     assert any(b.callback_data == f"c:t:{t['id']}" for b in buttons(s.of(SendMessage)[-1]))
     await press(dp, bot, 42, f"c:t:{t['id']}")
-    buy_btn = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data and b.callback_data.startswith("c:bp:"))
-    await press(dp, bot, 42, buy_btn.callback_data)
+    tier_btn = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data and b.callback_data.startswith("c:bq:"))
+    await press(dp, bot, 42, tier_btn.callback_data)
+    qty_btns = [b.callback_data for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data and b.callback_data.startswith("c:bp:")]
+    assert qty_btns[0].endswith(":1") and len(qty_btns) == 3   # only 3 in stock → 1, 2, 3
+    await press(dp, bot, 42, qty_btns[0])
     confirm = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data and b.callback_data.startswith("c:bc:"))
     assert (await wallet.get_user(core, 42))["balance"] == Decimal("25")
     await press(dp, bot, 42, confirm.callback_data)
@@ -188,3 +194,71 @@ async def test_claim_owner_links_telegram(env):
     assert await admins.telegram_role(core, 77) == "owner"
     await send_text(dp, bot, 78, "/claim SETUP-abc12345")
     assert await admins.telegram_role(core, 78) is None
+
+
+async def test_buy_quantity_three_farms_one_confirmation(env):
+    core, bot, dp, s = env
+    t = await make_type(core, 5, price="10")
+    await make_user(core, 44, "35")
+    await press(dp, bot, 44, f"c:bq:{t['id']}:10.00")
+    await press(dp, bot, 44, f"c:bp:{t['id']}:10.00:3")
+    conf = s.of(EditMessageText)[-1]
+    assert "30.00" in conf.text and "<b>3</b>" in conf.text
+    confirm = next(b for b in buttons(conf) if b.callback_data.startswith("c:bc:"))
+    await press(dp, bot, 44, confirm.callback_data)
+    await press(dp, bot, 44, confirm.callback_data)
+    cred_msgs = [m for m in s.of(SendMessage) if m.chat_id == 44 and "Password" in (m.text or "")]
+    assert len(cred_msgs) == 3 and "(3/3)" in cred_msgs[-1].text
+    assert (await wallet.get_user(core, 44))["balance"] == Decimal("5")
+    assert await core.pool.fetchval("SELECT count(*) FROM farm_accounts WHERE status='sold'") == 3
+    # more than the balance allows → offered to top up, nothing charged
+    await press(dp, bot, 44, f"c:bp:{t['id']}:10.00:2")
+    assert "لا يكفي" in s.of(EditMessageText)[-1].text
+    assert (await wallet.get_user(core, 44))["balance"] == Decimal("5")
+
+
+async def test_typed_quantity_and_stock_limit(env):
+    core, bot, dp, s = env
+    t = await make_type(core, 2, price="4")
+    await make_user(core, 45, "100")
+    await press(dp, bot, 45, f"c:bo:{t['id']}:4.00")
+    await send_text(dp, bot, 45, "abc")
+    assert "1" in s.of(SendMessage)[-1].text and "20" in s.of(SendMessage)[-1].text
+    await send_text(dp, bot, 45, "5")
+    assert "المتوفر بهذا السعر 2" in s.of(SendMessage)[-1].text
+
+
+async def test_english_language(env):
+    core, bot, dp, s = env
+    t = await make_type(core, 1, price="10")
+    await make_user(core, 46, "10")
+    await press(dp, bot, 46, "c:lang:en")
+    assert s.of(SendMessage)[-1].text == tr("en", "lang_set")
+    kbd = s.of(SendMessage)[-1].reply_markup.keyboard
+    assert kbd[0][0].text.endswith("Buy farms") and kbd[0][0].style == "success"
+    await send_text(dp, bot, 46, "🛒 Buy farms")
+    assert "Choose a farm type" in s.of(SendMessage)[-1].text
+    await press(dp, bot, 46, f"c:bp:{t['id']}:10.00:1")
+    confirm = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data.startswith("c:bc:"))
+    await press(dp, bot, 46, confirm.callback_data)
+    creds = [m for m in s.of(SendMessage) if m.chat_id == 46 and "Password" in (m.text or "")][-1]
+    assert "Your farm is ready" in creds.text
+    assert any(b.text == "📋 Copy ID" for b in buttons(creds))
+    # English notification from a service
+    await wallet.admin_adjust(core, "test", 46, "3", "bonus")
+    assert "Your balance was adjusted" in [m for m in s.of(SendMessage) if m.chat_id == 46][-1].text
+
+
+async def test_type_photo_shown_and_sent_with_credentials(env):
+    core, bot, dp, s = env
+    from app.services import catalog
+    t = await make_type(core, 1, price="10")
+    await catalog.set_type_photo(core, "test", t["id"], "PHOTO_TYPE_1")
+    await make_user(core, 47, "10")
+    await press(dp, bot, 47, f"c:t:{t['id']}")
+    assert s.of(SendPhoto)[-1].photo == "PHOTO_TYPE_1"   # text message replaced by a photo card
+    await press(dp, bot, 47, f"c:bp:{t['id']}:10.00:1")
+    confirm = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data.startswith("c:bc:"))
+    await press(dp, bot, 47, confirm.callback_data)
+    cred = [p for p in s.of(SendPhoto) if p.chat_id == 47][-1]
+    assert cred.photo == "PHOTO_TYPE_1" and "Password" in cred.caption

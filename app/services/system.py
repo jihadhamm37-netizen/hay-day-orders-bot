@@ -23,6 +23,16 @@ SETTINGS_SCHEMA: dict[str, tuple[str, str]] = {
     "max_deposit": ("أعلى مبلغ شحن (USDT)", "money"),
     "require_txid": ("طلب رقم عملية Binance مع الإثبات", "bool"),
     "auto_verify_enabled": ("التحقق الآلي عبر Binance API", "bool"),
+    "max_quantity": ("أقصى عدد مزارع في الطلب الواحد", "int"),
+    "welcome_text_en": ("رسالة الترحيب (English)", "longtext"),
+    "support_text_en": ("رسالة الدعم الفني (English)", "longtext"),
+    "payment_instructions_en": ("تعليمات الدفع (English)", "longtext"),
+    "icon_buy": ("أيقونة زر شراء المزارع (custom emoji id)", "icon"),
+    "icon_wallet": ("أيقونة زر محفظتي", "icon"),
+    "icon_topup": ("أيقونة زر شحن الرصيد", "icon"),
+    "icon_orders": ("أيقونة زر طلباتي", "icon"),
+    "icon_support": ("أيقونة زر الدعم الفني", "icon"),
+    "icon_lang": ("أيقونة زر اللغة", "icon"),
 }
 
 _CACHE_TTL = 10.0
@@ -72,6 +82,8 @@ def _normalize(key: str, value: Any) -> str:
             raise StoreError("bad_setting", "القيمة يجب أن تكون رقماً صحيحاً.")
         if n < 0:
             raise StoreError("bad_setting", "القيمة لا يمكن أن تكون سالبة.")
+        if key == "max_quantity" and not (1 <= n <= 100):
+            raise StoreError("bad_setting", "أقصى عدد يجب أن يكون بين 1 و 100.")
         return str(n)
     if kind == "money":
         m = money(value)
@@ -79,6 +91,10 @@ def _normalize(key: str, value: Any) -> str:
             raise StoreError("bad_setting", "المبلغ يجب أن يكون أكبر من صفر.")
         return str(m)
     v = str(value).strip()
+    if kind == "icon":
+        if v and (not v.isdigit() or len(v) > 30):
+            raise StoreError("bad_setting", "معرّف الأيقونة يجب أن يكون أرقاماً (custom_emoji_id) أو فارغاً.")
+        return v
     if key == "binance_pay_id":
         if not v.isdigit() or not (4 <= len(v) <= 20):
             raise StoreError("bad_setting", "معرّف Binance Pay يجب أن يكون أرقاماً فقط.")

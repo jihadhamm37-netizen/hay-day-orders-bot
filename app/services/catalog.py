@@ -303,6 +303,7 @@ async def add_accounts(core: Core, actor: str, type_id: int, items: list[dict], 
 async def list_accounts(core: Core, type_id: int | None = None, status: str | None = None,
                         limit: int = 50, offset: int = 0, search: str | None = None) -> list[dict]:
     q = ("SELECT a.id, a.type_id, a.login_hint, a.custom_price, a.status, a.note, a.created_at, a.sold_at, "
+         "(a.photo_file_id IS NOT NULL) AS has_photo, "
          "t.name AS type_name, t.price AS type_price, COALESCE(a.custom_price, t.price) AS effective_price, "
          "(SELECT o.ref FROM orders o WHERE o.account_id=a.id AND o.status<>'cancelled' LIMIT 1) AS order_ref "
          "FROM farm_accounts a JOIN farm_types t ON t.id=a.type_id WHERE 1=1")
@@ -419,3 +420,21 @@ async def check_stock_alert(core: Core, type_id: int) -> None:
     elif t["available_raw"] == threshold:
         await raise_alert(core, "info", "low_stock",
                           f"مخزون «{_esc(t['name'])}» منخفض: بقي {threshold} حساب.", "farm_type", type_id, perm="catalog")
+
+
+async def set_type_photo(core: Core, actor: str, type_id: int, file_id: str | None, ip: str | None = None) -> None:
+    async with core.pool.acquire() as conn, conn.transaction():
+        r = await conn.execute("UPDATE farm_types SET photo_file_id=$2, updated_at=now() WHERE id=$1", type_id, file_id)
+        if r.endswith(" 0"):
+            raise StoreError("not_found", "النوع غير موجود.")
+        await audit(conn, actor, "type.photo", "farm_type", type_id, {"removed": file_id is None}, ip)
+
+
+async def set_account_photo(core: Core, actor: str, account_id: int, file_id: str | None,
+                            ip: str | None = None) -> None:
+    async with core.pool.acquire() as conn, conn.transaction():
+        r = await conn.execute("UPDATE farm_accounts SET photo_file_id=$2, updated_at=now() WHERE id=$1",
+                               account_id, file_id)
+        if r.endswith(" 0"):
+            raise StoreError("not_found", "الحساب غير موجود.")
+        await audit(conn, actor, "account.photo", "farm_account", account_id, {"removed": file_id is None}, ip)

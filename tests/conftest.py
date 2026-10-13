@@ -31,8 +31,9 @@ class FakeMessenger:
             raise RuntimeError("Forbidden: bot was blocked by the user")
         self.credentials.append((user_id, login, password))
 
-    async def notify_user(self, user_id, text):
-        self.user_msgs.append((user_id, text))
+    async def notify_user(self, user_id, text=None, *, key=None, **params):
+        from app.i18n import render
+        self.user_msgs.append((user_id, text if key is None else render("ar", key, params)))
         return True
 
     async def notify_admins(self, text, *, perm="view", photo=None, reply_markup=None):

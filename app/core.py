@@ -17,17 +17,19 @@ log = logging.getLogger(__name__)
 class StoreError(Exception):
     """Business-rule failure with an Arabic message safe to show to the user."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, **params):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.params = params
 
 
 class Messenger(Protocol):
     """Implemented by the bot layer — everything that talks to Telegram."""
 
     async def send_credentials(self, user_id: int, order: dict, login: str, password: str) -> None: ...
-    async def notify_user(self, user_id: int, text: str) -> bool: ...
+    async def notify_user(self, user_id: int, text: str | None = None, *, key: str | None = None,
+                          **params) -> bool: ...
     async def notify_admins(self, text: str, *, perm: str = "view", photo: str | None = None,
                             reply_markup: Any = None) -> None: ...
     async def send_admin_code(self, telegram_id: int, code: str) -> bool: ...

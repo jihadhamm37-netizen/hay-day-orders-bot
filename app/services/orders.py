@@ -25,9 +25,20 @@ PENDING_TTL_MIN = 15
 STUCK_PROCESSING_MIN = 5
 
 
-async def prepare(core: Core, user_id: int, type_id: int, price: Any) -> dict:
-    """Create an order awaiting the customer's confirmation. Nothing is reserved or charged yet."""
+async def prepare(core: Core, user_id: int, type_id: int, price: Any, qty: int = 1) -> dict:
+    """Create order(s) awaiting the customer's confirmation. Nothing is reserved or charged yet.
+
+    Buying several farms creates one order per account, all sharing a batch id, confirmed together.
+    Returns the first order with extra keys: batch_id, qty, total, order_ids.
+    """
+    from .system import setting
     price = money(price)
+    try:
+        max_qty = max(1, int(await setting(core, "max_quantity", "20")))
+    except ValueError:
+        max_qty = 20
+    if not isinstance(qty, int) or qty < 1 or qty > max_qty:
+        raise StoreError("bad_qty", f"العدد يجب أن يكون بين 1 و {max_qty}.", max=max_qty)
     user = await core.pool.fetchrow("SELECT * FROM users WHERE id=$1", user_id)
     if not user:
         raise StoreError("not_found", "المستخدم غير موجود.")
@@ -39,73 +50,100 @@ async def prepare(core: Core, user_id: int, type_id: int, price: Any) -> dict:
     stock = await core.pool.fetchval(
         "SELECT COUNT(*) FROM farm_accounts WHERE type_id=$1 AND status='available' "
         "AND COALESCE(custom_price, $2)=$3", type_id, t["price"], price)
-    if not stock:
-        raise StoreError("out_of_stock", "عذراً، نفد المخزون بهذا السعر.")
-    if user["balance"] < price:
+    if stock < qty:
+        raise StoreError("out_of_stock",
+                         f"عذراً، المتوفر بهذا السعر {stock} فقط." if stock else "عذراً، نفد المخزون بهذا السعر.",
+                         available=stock)
+    total = price * qty
+    if user["balance"] < total:
         raise StoreError("insufficient_funds",
-                         f"رصيدك ({fmt(user['balance'])} USDT) لا يكفي. السعر {fmt(price)} USDT.")
+                         f"رصيدك ({fmt(user['balance'])} USDT) لا يكفي. الإجمالي {fmt(total)} USDT.",
+                         balance=fmt(user["balance"]), total=fmt(total))
     snapshot = {"name": t["name"], "lvl": t["lvl"], "barn": t["barn"], "silo": t["silo"]}
+    batch = uuid.uuid4().hex
+    base = make_ref("ORD")
+    created = []
     async with core.pool.acquire() as conn, conn.transaction():
         await conn.execute("UPDATE orders SET status='cancelled', failure_reason='استُبدل بطلب أحدث', "
                            "updated_at=now() WHERE user_id=$1 AND status='pending'", user_id)
-        o = await conn.fetchrow(
-            "INSERT INTO orders(ref, user_id, type_id, price, status, type_snapshot, idempotency_key) "
-            "VALUES($1,$2,$3,$4,'pending',$5,$6) RETURNING *",
-            make_ref("ORD"), user_id, type_id, price, snapshot, f"prep:{uuid.uuid4()}")
-    return dict(o)
+        for i in range(qty):
+            ref = base if qty == 1 else f"{base}-{i + 1}"
+            created.append(await conn.fetchrow(
+                "INSERT INTO orders(ref, user_id, type_id, price, status, type_snapshot, idempotency_key, batch_id) "
+                "VALUES($1,$2,$3,$4,'pending',$5,$6,$7) RETURNING *",
+                ref, user_id, type_id, price, snapshot, f"prep:{uuid.uuid4()}", batch))
+    first = dict(created[0])
+    first.update(batch_id=batch, qty=qty, total=total, batch_ref=base, order_ids=[o["id"] for o in created])
+    return first
 
 
-async def _confirm(core: Core, user_id: int, order_id: int) -> dict:
+async def _confirm(core: Core, user_id: int, order_id: int) -> list[dict]:
+    """Atomically reserve one account per order of the batch and charge them — all or nothing."""
     async with core.pool.acquire() as conn:
         try:
             async with conn.transaction():
                 # The status flip is the double-click guard: only one caller can move pending → processing.
-                o = await conn.fetchrow(
-                    "UPDATE orders SET status='processing', updated_at=now() WHERE id=$1 AND user_id=$2 "
-                    "AND status='pending' AND created_at > now() - make_interval(mins => $3) RETURNING *",
+                os_ = await conn.fetch(
+                    "UPDATE orders SET status='processing', updated_at=now() WHERE user_id=$2 AND status='pending' "
+                    "AND created_at > now() - make_interval(mins => $3) AND (id=$1 OR batch_id = "
+                    "(SELECT batch_id FROM orders WHERE id=$1 AND user_id=$2)) RETURNING *",
                     order_id, user_id, PENDING_TTL_MIN)
-                if not o:
+                if not os_:
                     cur = await conn.fetchrow("SELECT status, user_id FROM orders WHERE id=$1", order_id)
                     if not cur or cur["user_id"] != user_id:
                         raise StoreError("not_found", "الطلب غير موجود.")
                     if cur["status"] == "pending":
                         raise StoreError("expired", "انتهت صلاحية هذا الطلب، ابدأ الشراء من جديد.")
                     raise StoreError("already", f"تمت معالجة هذا الطلب مسبقاً ({STATUS_LABELS[cur['status']]}).")
+                os_ = sorted(os_, key=lambda r: r["id"])
                 if await conn.fetchval("SELECT is_banned FROM users WHERE id=$1", user_id):
                     raise StoreError("banned", "حسابك موقوف. تواصل مع الدعم.")
-                acc = await conn.fetchrow(
+                first = os_[0]
+                accs = await conn.fetch(
                     "SELECT a.id FROM farm_accounts a JOIN farm_types t ON t.id=a.type_id "
                     "WHERE a.type_id=$1 AND a.status='available' AND t.is_active "
                     "AND COALESCE(a.custom_price, t.price)=$2 "
-                    "ORDER BY a.id LIMIT 1 FOR UPDATE OF a SKIP LOCKED",
-                    o["type_id"], o["price"])
-                if not acc:
-                    raise StoreError("out_of_stock", "عذراً، نفد المخزون قبل إتمام الطلب. لم يُخصم أي مبلغ.")
-                await conn.execute("UPDATE farm_accounts SET status='reserved', updated_at=now() "
-                                   "WHERE id=$1 AND status='available'", acc["id"])
-                o = await conn.fetchrow("UPDATE orders SET account_id=$2 WHERE id=$1 RETURNING *", order_id, acc["id"])
-                await apply_tx(conn, user_id=user_id, amount=-o["price"], kind="purchase",
-                               idempotency_key=f"order:{order_id}", order_id=order_id,
-                               actor=f"tg:{user_id}", reason=f"شراء {o['type_snapshot']['name']} ({o['ref']})")
-                return dict(o)
+                    "ORDER BY a.id LIMIT $3 FOR UPDATE OF a SKIP LOCKED",
+                    first["type_id"], first["price"], len(os_))
+                if len(accs) < len(os_):
+                    raise StoreError("out_of_stock", "عذراً، نفد المخزون قبل إتمام الطلب. لم يُخصم أي مبلغ.",
+                                     available=len(accs))
+                result = []
+                for o, acc in zip(os_, accs):
+                    await conn.execute("UPDATE farm_accounts SET status='reserved', updated_at=now() "
+                                       "WHERE id=$1 AND status='available'", acc["id"])
+                    o = await conn.fetchrow("UPDATE orders SET account_id=$2 WHERE id=$1 RETURNING *", o["id"], acc["id"])
+                    await apply_tx(conn, user_id=user_id, amount=-o["price"], kind="purchase",
+                                   idempotency_key=f"order:{o['id']}", order_id=o["id"],
+                                   actor=f"tg:{user_id}", reason=f"شراء {o['type_snapshot']['name']} ({o['ref']})")
+                    result.append(dict(o))
+                return result
         except StoreError as e:
             if e.code not in ("already", "not_found"):
-                await conn.execute("UPDATE orders SET status='cancelled', failure_reason=$2, updated_at=now() "
-                                   "WHERE id=$1 AND status='pending'", order_id, e.message)
+                await conn.execute(
+                    "UPDATE orders SET status='cancelled', failure_reason=$2, updated_at=now() WHERE user_id=$3 "
+                    "AND status='pending' AND (id=$1 OR batch_id=(SELECT batch_id FROM orders WHERE id=$1))",
+                    order_id, e.message, user_id)
             raise
 
 
 async def purchase(core: Core, user_id: int, order_id: int) -> dict:
-    """Confirm + deliver. Returns the final order row."""
-    o = await _confirm(core, user_id, order_id)
-    await deliver(core, o["id"])
-    return await get_order(core, o["id"])
+    """Confirm + deliver every order of the batch. Returns the first order, with 'batch' = all orders."""
+    confirmed = await _confirm(core, user_id, order_id)
+    n = len(confirmed)
+    for i, o in enumerate(confirmed, 1):
+        await deliver(core, o["id"], part=(i, n) if n > 1 else None)
+    final = [await get_order(core, o["id"]) for o in confirmed]
+    first = dict(final[0])
+    first["batch"] = final
+    return first
 
 
-async def deliver(core: Core, order_id: int, *, actor: str = "system") -> bool:
+async def deliver(core: Core, order_id: int, *, actor: str = "system", part: tuple[int, int] | None = None) -> bool:
     """Send credentials. Only marks the order completed after Telegram accepted the message."""
     o = await core.pool.fetchrow(
-        "SELECT o.*, a.login_enc, a.password_enc FROM orders o JOIN farm_accounts a ON a.id=o.account_id "
+        "SELECT o.*, a.login_enc, a.password_enc, COALESCE(a.photo_file_id, t.photo_file_id) AS photo "
+        "FROM orders o JOIN farm_accounts a ON a.id=o.account_id JOIN farm_types t ON t.id=o.type_id "
         "WHERE o.id=$1", order_id)
     if not o or o["status"] != "processing":
         return False
@@ -114,7 +152,7 @@ async def deliver(core: Core, order_id: int, *, actor: str = "system") -> bool:
             raise RuntimeError("messenger not configured")
         login = core.vault.decrypt(o["login_enc"])
         password = core.vault.decrypt(o["password_enc"])
-        await core.messenger.send_credentials(o["user_id"], dict(o), login, password)
+        await core.messenger.send_credentials(o["user_id"], dict(o) | {"part": part}, login, password)
     except Exception as e:  # Telegram refused, user blocked bot, network, …
         log.warning("delivery failed for order %s: %s", o["ref"], e)
         await core.pool.execute(
@@ -203,10 +241,8 @@ async def refund(core: Core, actor: str, order_id: int, reason: str, restock: bo
                     {"amount": o["price"], "reason": reason, "restock": restock,
                      "previous_status": o["status"]}, ip)
     if core.messenger and tx:
-        await core.messenger.notify_user(
-            o["user_id"],
-            f"↩️ تم إلغاء الطلب <code>{o['ref']}</code> واسترداد <b>{fmt(o['price'])} USDT</b> إلى محفظتك.\n"
-            f"السبب: {reason}")
+        await core.messenger.notify_user(o["user_id"], key="n_refund", ref=o["ref"], amount=fmt(o["price"]),
+                                         reason=reason.replace("<", "&lt;"))
     return await get_order(core, order_id)
 
 
@@ -224,7 +260,8 @@ async def get_order_by_ref(core: Core, ref: str) -> dict | None:
 async def buyer_credentials(core: Core, user_id: int, order_id: int) -> tuple[dict, str, str]:
     """Credentials are only ever revealed to the buyer of a completed order."""
     o = await core.pool.fetchrow(
-        "SELECT o.*, a.login_enc, a.password_enc FROM orders o JOIN farm_accounts a ON a.id=o.account_id "
+        "SELECT o.*, a.login_enc, a.password_enc, COALESCE(a.photo_file_id, t.photo_file_id) AS photo "
+        "FROM orders o JOIN farm_accounts a ON a.id=o.account_id JOIN farm_types t ON t.id=o.type_id "
         "WHERE o.id=$1 AND o.user_id=$2 AND o.status='completed'", order_id, user_id)
     if not o:
         raise StoreError("not_found", "لا توجد بيانات لهذا الطلب.")

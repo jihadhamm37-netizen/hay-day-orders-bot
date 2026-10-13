@@ -9,41 +9,63 @@ from aiogram.types import (CopyTextButton, InlineKeyboardButton, InlineKeyboardM
                            ReplyKeyboardMarkup)
 
 from ..core import fmt
+from ..i18n import LANGS, t
 from ..services.deposits import STATUS_LABELS as DEP_LABELS
 from ..services.orders import STATUS_LABELS as ORD_LABELS
 from ..services.wallet import KIND_LABELS
 
-# --------------------------------------------------------- main menu labels
-BTN_BUY = "🛒 شراء المزارع"
-BTN_WALLET = "💼 محفظتي"
-BTN_TOPUP = "💳 شحن الرصيد"
-BTN_ORDERS = "📦 طلباتي"
-BTN_SUPPORT = "🛟 الدعم الفني"
-BTN_ADMIN = "🛠 لوحة الإدارة"
-
 LOCAL_TZ = timezone(timedelta(hours=3))  # Asia/Amman (UTC+3)
 
-ORDER_ICONS = {"pending": "⏳", "processing": "⚙️", "completed": "✅", "cancelled": "✖️", "needs_review": "⚠️"}
-DEP_ICONS = {"awaiting_payment": "⏳", "under_review": "🔎", "approved": "✅", "rejected": "❌", "cancelled": "✖️"}
+# main menu: key -> (fallback emoji, Telegram button colour)
+MENU = {
+    "buy": ("🛒", "success"),
+    "wallet": ("💼", "primary"),
+    "topup": ("💳", "success"),
+    "orders": ("📦", "primary"),
+    "support": ("🎧", None),
+    "lang": ("🌐", None),
+    "admin": ("🛠", "danger"),
+}
+BTN_ADMIN = "🛠 لوحة الإدارة"   # kept for the admin router
 
 
-def main_menu(is_admin: bool) -> ReplyKeyboardMarkup:
-    rows = [
-        [KeyboardButton(text=BTN_BUY)],
-        [KeyboardButton(text=BTN_WALLET), KeyboardButton(text=BTN_TOPUP)],
-        [KeyboardButton(text=BTN_ORDERS), KeyboardButton(text=BTN_SUPPORT)],
-    ]
+def menu_labels(key: str) -> set[str]:
+    """Every text a menu button can send (all languages, with or without the emoji)."""
+    emoji = MENU[key][0]
+    out = set()
+    for lang in LANGS:
+        label = t(lang, f"btn_{key}")
+        out |= {label, f"{emoji} {label}"}
+    return out
+
+
+def _menu_btn(key: str, lang: str, icons: dict | None) -> KeyboardButton:
+    emoji, style = MENU[key]
+    icon = (icons or {}).get(key)
+    label = t(lang, f"btn_{key}")
+    if icon:
+        return KeyboardButton(text=label, icon_custom_emoji_id=icon, style=style)
+    return KeyboardButton(text=f"{emoji} {label}", style=style)
+
+
+def main_menu(lang: str, is_admin: bool, icons: dict | None = None) -> ReplyKeyboardMarkup:
+    b = lambda k: _menu_btn(k, lang, icons)  # noqa: E731
+    rows = [[b("buy")], [b("wallet"), b("topup")], [b("orders"), b("support")], [b("lang")]]
     if is_admin:
-        rows.append([KeyboardButton(text=BTN_ADMIN)])
+        rows[-1].append(b("admin"))
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
+
+
+def lang_kb() -> InlineKeyboardMarkup:
+    return kb([btn(name, f"c:lang:{code}") for code, name in LANGS.items()])
 
 
 def kb(*rows: Iterable[InlineKeyboardButton]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[list(r) for r in rows if r])
 
 
-def btn(text: str, data: str) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=text, callback_data=data)
+def btn(text: str, data: str, style: str | None = None) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=data, style=style)
 
 
 def url_btn(text: str, url: str) -> InlineKeyboardButton:
@@ -66,57 +88,72 @@ def dt(value: datetime | None) -> str:
     return value.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M")
 
 
-def type_line(t: dict) -> str:
-    return f"LVL {t['lvl']} • Barn {t['barn']} • Silo {t['silo']}"
+def type_line(tp: dict) -> str:
+    return f"LVL {tp['lvl']} • Barn {tp['barn']} • Silo {tp['silo']}"
 
 
-def type_card(t: dict, tiers: list[dict] | None = None) -> str:
+def type_card(tp: dict, tiers: list[dict] | None = None, lang: str = "ar") -> str:
     lines = [
-        f"🌾 <b>{e(t['name'])}</b>",
+        f"🌾 <b>{e(tp['name'])}</b>",
         "",
-        f"⭐️ المستوى (LVL): <b>{t['lvl']}</b>",
-        f"🏚 سعة المخزن (Barn): <b>{t['barn']:,}</b>",
-        f"🌽 سعة الصومعة (Silo): <b>{t['silo']:,}</b>",
-        f"💵 السعر: <b>{fmt(t['price'])} USDT</b>",
-        f"📦 المتوفر: <b>{t['available']}</b>",
+        f"{t(lang, 'card_level')}: <b>{tp['lvl']}</b>",
+        f"{t(lang, 'card_barn')}: <b>{tp['barn']:,}</b>",
+        f"{t(lang, 'card_silo')}: <b>{tp['silo']:,}</b>",
+        f"{t(lang, 'card_price')}: <b>{fmt(tp['price'])} USDT</b>",
+        f"{t(lang, 'card_stock')}: <b>{tp['available']}</b>",
     ]
-    if t.get("description"):
-        lines += ["", e(t["description"])]
+    if tp.get("description"):
+        lines += ["", e(tp["description"])]
     if tiers and len(tiers) > 1:
-        lines += ["", "الأسعار المتاحة:"] + [f"• {fmt(x['price'])} USDT — {x['available']} حساب" for x in tiers]
+        lines += ["", t(lang, "card_tiers")] + [t(lang, "tier_line", price=fmt(x["price"]), n=x["available"]) for x in tiers]
     return "\n".join(lines)
 
 
-def credentials_text(order: dict, login: str, password: str) -> str:
+def credentials_text(order: dict, login: str, password: str, lang: str = "ar") -> str:
     snap = order["type_snapshot"]
-    return (
-        "🎉 <b>تم شراء المزرعة بنجاح</b>\n\n"
-        f"🧾 رقم الطلب: <code>{e(order['ref'])}</code>\n"
-        f"🌾 النوع: {e(snap['name'])} — LVL {snap['lvl']} • Barn {snap['barn']} • Silo {snap['silo']}\n"
-        f"💵 السعر: {fmt(order['price'])} USDT\n\n"
-        f"🆔 <b>ID:</b> <code>{e(login)}</code>\n"
-        f"🔑 <b>Password:</b> <code>{e(password)}</code>\n\n"
-        "⚠️ احفظ البيانات في مكان آمن ولا تشاركها مع أحد."
-    )
+    part = order.get("part")
+    return t(lang, "creds", part=f" ({part[0]}/{part[1]})" if part else "", ref=e(order["ref"]), name=e(snap["name"]),
+             lvl=snap["lvl"], barn=snap["barn"], silo=snap["silo"], price=fmt(order["price"]),
+             login=e(login), password=e(password))
 
 
-def credentials_kb(login: str, password: str) -> InlineKeyboardMarkup:
+def credentials_kb(login: str, password: str, lang: str = "ar") -> InlineKeyboardMarkup:
     full = f"ID: {login}\nPassword: {password}"
     return kb(
-        [b for b in (copy_btn("📋 نسخ ID", login), copy_btn("📋 نسخ Password", password)) if b],
-        [b for b in (copy_btn("📋 نسخ البيانات كاملة", full),) if b],
+        [b for b in (copy_btn(t(lang, "copy_id"), login), copy_btn(t(lang, "copy_pw"), password)) if b],
+        [b for b in (copy_btn(t(lang, "copy_all"), full),) if b],
     )
 
 
-def order_line(o: dict) -> str:
+ORDER_ICONS = {"pending": "⏳", "processing": "⚙️", "completed": "✅", "cancelled": "✖️", "needs_review": "⚠️"}
+DEP_ICONS = {"awaiting_payment": "⏳", "under_review": "🔎", "approved": "✅", "rejected": "❌", "cancelled": "✖️"}
+
+
+def order_line(o: dict, lang: str = "ar") -> str:
+    snap = o["type_snapshot"]
+    return f"{ORDER_ICONS.get(o['status'], '•')} {snap['name']} — {fmt(o['price'])} USDT — {t(lang, 'st_' + o['status'])}"
+
+
+def deposit_line(d: dict, lang: str = "ar") -> str:
+    return (f"{DEP_ICONS.get(d['status'], '•')} {fmt(d['amount'])} USDT — {t(lang, 'dst_' + d['status'])} — "
+            f"{dt(d['created_at'])}")
+
+
+def tx_line(x: dict, lang: str = "ar") -> str:
+    sign = "+" if x["amount"] > 0 else ""
+    return f"• {dt(x['created_at'])} | {t(lang, 'kind_' + x['kind'])} | <b>{sign}{fmt(x['amount'])}</b> | <code>{x['ref']}</code>"
+
+
+# admin-side helpers (Arabic only)
+def order_line_ar(o: dict) -> str:
     snap = o["type_snapshot"]
     return f"{ORDER_ICONS.get(o['status'], '•')} {snap['name']} — {fmt(o['price'])} USDT — {ORD_LABELS[o['status']]}"
 
 
-def deposit_line(d: dict) -> str:
+def deposit_line_ar(d: dict) -> str:
     return f"{DEP_ICONS.get(d['status'], '•')} {fmt(d['amount'])} USDT — {DEP_LABELS[d['status']]} — {dt(d['created_at'])}"
 
 
-def tx_line(t: dict) -> str:
-    sign = "+" if t["amount"] > 0 else ""
-    return f"• {dt(t['created_at'])} | {KIND_LABELS.get(t['kind'], t['kind'])} | <b>{sign}{fmt(t['amount'])}</b> | <code>{t['ref']}</code>"
+def tx_line_ar(x: dict) -> str:
+    sign = "+" if x["amount"] > 0 else ""
+    return f"• {dt(x['created_at'])} | {KIND_LABELS.get(x['kind'], x['kind'])} | <b>{sign}{fmt(x['amount'])}</b> | <code>{x['ref']}</code>"

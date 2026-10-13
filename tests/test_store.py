@@ -57,8 +57,9 @@ async def test_admin_adjust_idempotent(core):
 async def test_credentials_are_encrypted_and_deduplicated(core):
     t = await make_type(core, 3)
     raw = await core.pool.fetch("SELECT login_enc, password_enc FROM farm_accounts")
-    for r in raw:
-        assert "farm" not in r["login_enc"] and "pw" not in r["password_enc"]
+    for i, r in enumerate(raw):
+        assert f"farm70_{i}" not in r["login_enc"] and f"pw{i}" not in r["password_enc"]
+        assert core.vault.decrypt(r["login_enc"]).startswith("farm70_")
     rep = await catalog.add_accounts(core, "test", t["id"], [
         {"line": 1, "login": "FARM70_0", "password": "x"},   # exists already (case-insensitive)
         {"line": 2, "login": "new1", "password": "a"},
@@ -315,3 +316,24 @@ async def test_maintenance_flags_stuck_orders(core):
     await core.pool.execute("UPDATE orders SET updated_at = now() - interval '1 hour' WHERE id=$1", o2["id"])
     assert (await orders.maintenance(core))["stuck"] == 1
     assert (await orders.get_order(core, o2["id"]))["status"] == "needs_review"
+
+
+async def test_quantity_is_all_or_nothing_under_concurrency(core):
+    t = await make_type(core, 5)
+    await make_user(core, 1, "30")
+    await make_user(core, 2, "30")
+    o1 = await orders.prepare(core, 1, t["id"], "10", qty=3)
+    o2 = await orders.prepare(core, 2, t["id"], "10", qty=3)
+    assert o1["total"] == D("30") and len(o1["order_ids"]) == 3
+    res = await asyncio.gather(orders.purchase(core, 1, o1["id"]), orders.purchase(core, 2, o2["id"]),
+                               return_exceptions=True)
+    ok = [r for r in res if isinstance(r, dict)]
+    bad = [r for r in res if isinstance(r, StoreError)]
+    assert len(ok) == 1 and len(bad) == 1 and bad[0].code == "out_of_stock"
+    assert len(ok[0]["batch"]) == 3 and all(x["status"] == "completed" for x in ok[0]["batch"])
+    balances = sorted([(await wallet.get_user(core, u))["balance"] for u in (1, 2)])
+    assert balances == [D("0"), D("30")]          # loser charged nothing
+    assert await core.pool.fetchval("SELECT count(*) FROM farm_accounts WHERE status='available'") == 2
+    assert await wallet.reconcile(core) == []
+    with pytest.raises(StoreError):
+        await orders.prepare(core, 1, t["id"], "10", qty=0)

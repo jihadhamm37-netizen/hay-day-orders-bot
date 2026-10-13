@@ -8,6 +8,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from ..core import Core
+from ..i18n import t
 from ..services.admins import telegram_role
 from ..services.wallet import touch_user
 
@@ -33,15 +34,17 @@ class UserMiddleware(BaseMiddleware):
             self._last[user.id] = now
             if len(self._last) > 50_000:
                 self._last.clear()
-        db_user = await touch_user(self.core, user.id, user.username, user.first_name)
+        guess = "ar" if (user.language_code or "ar").lower().startswith("ar") else "en"
+        db_user = await touch_user(self.core, user.id, user.username, user.first_name, guess)
         role = await telegram_role(self.core, user.id)
         if db_user["is_banned"] and not role:
             if isinstance(event, CallbackQuery):
-                await event.answer("حسابك موقوف. تواصل مع الدعم.", show_alert=True)
+                await event.answer(t(db_user["lang"], "banned"), show_alert=True)
             elif isinstance(event, Message):
-                await event.answer("⛔️ حسابك موقوف. تواصل مع الدعم الفني.")
+                await event.answer(t(db_user["lang"], "banned"))
             return None
         data["core"] = self.core
         data["db_user"] = db_user
         data["role"] = role
+        data["lang"] = db_user["lang"]
         return await handler(event, data)

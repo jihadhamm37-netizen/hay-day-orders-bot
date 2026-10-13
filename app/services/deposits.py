@@ -152,12 +152,10 @@ async def approve(core: Core, actor: str, deposit_id: int, credited: Any = None,
         await audit(conn, actor, "deposit.approve", "deposit", deposit_id,
                     {"requested": d["amount"], "credited": amount, "tx": tx["ref"], "note": note}, ip)
     if core.messenger:
-        extra = "" if amount == d["amount"] else f"\n(المبلغ المطلوب كان {fmt(d['amount'])} USDT)"
         await core.messenger.notify_user(
-            d["user_id"],
-            f"✅ <b>تم قبول طلب الشحن</b> <code>{d['ref']}</code>\n"
-            f"أُضيف إلى محفظتك: <b>{fmt(amount)} USDT</b>{extra}\n"
-            f"رصيدك الحالي: <b>{fmt(tx['balance_after'])} USDT</b>")
+            d["user_id"], key="n_deposit_ok", ref=d["ref"], amount=fmt(amount),
+            balance=fmt(tx["balance_after"]),
+            extra=None if amount == d["amount"] else ("n_deposit_extra", {"requested": fmt(d["amount"])}))
     return await get(core, deposit_id)
 
 
@@ -174,10 +172,7 @@ async def reject(core: Core, actor: str, deposit_id: int, reason: str, ip: str |
             raise StoreError("already", "تمت مراجعة هذا الطلب مسبقاً.")
         await audit(conn, actor, "deposit.reject", "deposit", deposit_id, {"reason": reason}, ip)
     if core.messenger:
-        await core.messenger.notify_user(
-            d["user_id"],
-            f"❌ <b>تم رفض طلب الشحن</b> <code>{d['ref']}</code>\nالسبب: {reason}\n"
-            f"إذا كان لديك استفسار تواصل مع الدعم الفني.")
+        await core.messenger.notify_user(d["user_id"], key="n_deposit_rejected", ref=d["ref"], reason=_esc(reason))
     return await get(core, deposit_id)
 
 
@@ -216,3 +211,7 @@ async def maintenance(core: Core) -> int:
         "UPDATE deposits SET status='cancelled', updated_at=now() WHERE status='awaiting_payment' "
         "AND updated_at < now() - make_interval(hours => $1)", OPEN_TTL_HOURS)
     return int(r.split()[-1])
+
+
+def _esc(v: str) -> str:
+    return str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
