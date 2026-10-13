@@ -285,4 +285,4 @@ async def test_farm_card_shows_tools_in_post_format(env):
     await make_user(core, 48, "0")
     await press(dp, bot, 48, f"c:t:{tp['id']}")
     card = s.of(EditMessageText)[-1].text
-    assert "المستوى: 100\nالمخزن (Barn): 4000\nالصومعة (Silo): 1000\nالأدوات: 4000 (أدوات أرض)" in card
+    assert card == "المستوى: 100\nالمخزن: 4000\nالصومعة: 1000\nالأدوات: 4000\nالسعر: 10.00 USDT\nالمتوفر: 1"

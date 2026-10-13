@@ -104,19 +104,12 @@ def specs(tp: dict, lang: str = "ar") -> str:
 
 
 def type_card(tp: dict, tiers: list[dict] | None = None, lang: str = "ar") -> str:
-    lines = [
-        f"<b>{e(tp['name'])}</b>",
-        "",
+    """Exactly: المستوى / المخزن / الصومعة / الأدوات / السعر / المتوفر — nothing else."""
+    return "\n".join([
         specs(tp, lang),
-        "",
-        f"{t(lang, 'card_price')}: <b>{fmt(tp['price'])} USDT</b>",
-        f"{t(lang, 'card_stock')}: <b>{tp['available']}</b>",
-    ]
-    if tp.get("description"):
-        lines += ["", e(tp["description"])]
-    if tiers and len(tiers) > 1:
-        lines += ["", t(lang, "card_tiers")] + [t(lang, "tier_line", price=fmt(x["price"]), n=x["available"]) for x in tiers]
-    return "\n".join(lines)
+        f"{t(lang, 'card_price')}: {fmt(tp['price'])} USDT",
+        f"{t(lang, 'card_stock')}: {tp['available']}",
+    ])
 
 
 def credentials_text(order: dict, login: str, password: str, lang: str = "ar") -> str:
