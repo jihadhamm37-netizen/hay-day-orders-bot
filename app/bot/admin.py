@@ -13,7 +13,7 @@ from ..core import Core, StoreError, fmt
 from ..services import admins, backup, catalog, deposits, orders, stats, system, wallet
 from ..services.deposits import STATUS_LABELS as DEP_LABELS
 from ..services.orders import STATUS_LABELS as ORD_LABELS
-from .ui import btn, dt, e, kb, menu_labels, type_line
+from .ui import btn, dt, e, kb, menu_labels, type_button, type_line
 from .ui import deposit_line_ar as deposit_line, order_line_ar as order_line, tx_line_ar as tx_line
 
 router = Router(name="admin")
@@ -177,7 +177,7 @@ async def _types_list(core: Core, filters: dict | None = None):
     rows = []
     for t in types:
         state = "" if t["is_active"] else "[موقوف] "
-        rows.append([btn(f"{state}{t['name']} • {fmt(t['price'])}$ • متوفر {t['available_raw']} • مباع {t['sold']}",
+        rows.append([btn(f"{state}{type_button(t)} • {fmt(t['price'])}$ • متوفر {t['available_raw']} • مباع {t['sold']}",
                          f"a:t:{t['id']}")])
     rows.append([btn("نوع جديد", "a:tnew"), btn("بحث/تصفية", "a:tsearch")])
     rows.append(BACK)

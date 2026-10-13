@@ -14,7 +14,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InputMediaPhoto, 
 from ..core import Core, StoreError, fmt
 from ..i18n import err, t
 from ..services import catalog, deposits, orders, system, wallet
-from .ui import (MENU, specs, btn, copy_btn, credentials_batch_messages, credentials_kb, credentials_text, deposit_line, dt, e, kb, lang_kb,
+from .ui import (MENU, specs, type_button, btn, copy_btn, credentials_batch_messages, credentials_kb, credentials_text, deposit_line, dt, e, kb, lang_kb,
                  main_menu, menu_labels, order_line, tx_line, type_card, url_btn)
 
 log = logging.getLogger(__name__)
@@ -154,10 +154,10 @@ async def _types_view(core: Core, lang: str, filters: dict | None = None):
     for tp in types:
         if tp["available"] > 0:
             price = fmt(tp["min_price"]) if tp["min_price"] == tp["max_price"] else f"{fmt(tp['min_price'])}+"
-            label = f"LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • T{tp.get('tools') or 0} • {price} USDT ({tp['available']})"
+            label = f"{type_button(tp)} • {price}$ ({tp['available']})"
             rows.append([btn(label, f"c:t:{tp['id']}", "success")])
         else:
-            rows.append([btn(f"LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • {t(lang, 'out')}", f"c:t:{tp['id']}")])
+            rows.append([btn(f"{type_button(tp)} • {t(lang, 'out')}", f"c:t:{tp['id']}")])
     rows.append([btn(t(lang, "btn_filter"), "c:filter")])
     if filters:
         rows.append([btn(t(lang, "btn_all_types"), "c:types")])

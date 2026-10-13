@@ -88,6 +88,21 @@ def dt(value: datetime | None) -> str:
     return value.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M")
 
 
+def short(n) -> str:
+    """10000 -> 10k, 1500 -> 1.5k, 2500000 -> 2.5M (keeps buttons short on small screens)."""
+    n = int(n or 0)
+    for size, suffix in ((1_000_000, "M"), (1_000, "k")):
+        if n >= size:
+            v = n / size
+            txt = f"{v:.1f}".rstrip("0").rstrip(".")
+            return txt + suffix
+    return str(n)
+
+
+def type_button(tp: dict) -> str:
+    return f"LVL {tp['lvl']} • {short(tp['barn'])}/{short(tp['silo'])} • T{short(tp.get('tools'))}"
+
+
 def type_line(tp: dict) -> str:
     return f"LVL {tp['lvl']} • Barn {tp['barn']} • Silo {tp['silo']} • Tools {tp.get('tools') or 0}"
 
