@@ -252,7 +252,7 @@ async def test_english_language(env):
     await press(dp, bot, 46, confirm.callback_data)
     creds = [m for m in s.of(SendMessage) if m.chat_id == 46 and "Password" in (m.text or "")][-1]
     assert "Your farm is ready" in creds.text
-    assert any(b.text == "📋 Copy ID" for b in buttons(creds))
+    assert any(b.text == "Copy ID" for b in buttons(creds))
     # English notification from a service
     await wallet.admin_adjust(core, "test", 46, "3", "bonus")
     assert "Your balance was adjusted" in [m for m in s.of(SendMessage) if m.chat_id == 46][-1].text

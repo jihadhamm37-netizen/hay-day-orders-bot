@@ -121,15 +121,15 @@ async def claim(message: Message, state: FSMContext, core: Core, lang: str):
     try:
         a = await admins_svc.claim_owner(core, message.from_user.id, parts[1] if len(parts) > 1 else "")
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         return
     try:
         await message.delete()  # remove the setup code from the chat
     except Exception:
         pass
     await send_menu(message, core,
-                    f"✅ تم ربط حسابك كمالك للمتجر (حساب اللوحة: <code>{e(a['username'])}</code>).\n"
-                    "ظهر لك الآن زر «🛠 لوحة الإدارة»، وستصلك الإشعارات ورموز دخول اللوحة هنا.", lang, True)
+                    f"تم ربط حسابك كمالك للمتجر (حساب اللوحة: <code>{e(a['username'])}</code>).\n"
+                    "ظهر لك الآن زر «لوحة الإدارة»، وستصلك الإشعارات ورموز دخول اللوحة هنا.", lang, True)
 
 
 @router.message(Command("cancel"))
@@ -154,7 +154,7 @@ async def _types_view(core: Core, lang: str, filters: dict | None = None):
     for tp in types:
         if tp["available"] > 0:
             price = fmt(tp["min_price"]) if tp["min_price"] == tp["max_price"] else f"{fmt(tp['min_price'])}+"
-            label = f"{'🖼 ' if tp.get('photo_file_id') else ''}LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • {price} USDT ({tp['available']})"
+            label = f"LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • {price} USDT ({tp['available']})"
             rows.append([btn(label, f"c:t:{tp['id']}", "success")])
         else:
             rows.append([btn(f"LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • {t(lang, 'out')}", f"c:t:{tp['id']}")])

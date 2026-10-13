@@ -62,7 +62,7 @@ async def jobs(core: Core, bot) -> None:
                     if core.config.backup_to_telegram:
                         for owner in sorted(core.config.owner_ids):
                             await bot.send_document(owner, FSInputFile(path),
-                                                    caption=f"🗄 نسخة احتياطية تلقائية: {path.name}")
+                                                    caption=f"نسخة احتياطية تلقائية: {path.name}")
                 except StoreError as e:
                     await system.raise_alert(core, "error", "backup_failed", e.message, perm="backup")
                 except Exception as e:

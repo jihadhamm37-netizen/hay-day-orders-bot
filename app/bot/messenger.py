@@ -17,8 +17,8 @@ log = logging.getLogger(__name__)
 
 def deposit_review_kb(deposit_id: int):
     return kb(
-        [btn("✅ قبول", f"a:da:{deposit_id}", "success"), btn("❌ رفض", f"a:dr:{deposit_id}", "danger")],
-        [btn("✏️ قبول بمبلغ مختلف", f"a:dam:{deposit_id}")],
+        [btn("قبول", f"a:da:{deposit_id}", "success"), btn("رفض", f"a:dr:{deposit_id}", "danger")],
+        [btn("قبول بمبلغ مختلف", f"a:dam:{deposit_id}")],
     )
 
 
@@ -90,7 +90,7 @@ class TelegramMessenger:
         try:
             await self.bot.send_message(
                 telegram_id,
-                f"🔐 رمز الدخول إلى لوحة التحكم: <code>{code}</code>\nصالح لمدة 5 دقائق. "
+                f"رمز الدخول إلى لوحة التحكم: <code>{code}</code>\nصالح لمدة 5 دقائق. "
                 "إذا لم تطلبه فغيّر كلمة المرور فوراً.")
             return True
         except TelegramAPIError as e:
@@ -101,5 +101,5 @@ class TelegramMessenger:
         """Upload an image once to get a reusable Telegram file_id (used by the web panel)."""
         from aiogram.types import BufferedInputFile
         msg = await self.bot.send_photo(chat_id, BufferedInputFile(data, filename),
-                                        caption="🖼 تم رفع الصورة من لوحة التحكم", disable_notification=True)
+                                        caption="تم رفع الصورة من لوحة التحكم", disable_notification=True)
         return msg.photo[-1].file_id

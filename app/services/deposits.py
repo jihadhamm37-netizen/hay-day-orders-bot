@@ -67,7 +67,7 @@ async def attach_photo(core: Core, user_id: int, deposit_id: int, file_id: str, 
             "WHERE id=$1 AND user_id=$2 AND status='awaiting_payment' RETURNING *",
             deposit_id, user_id, file_id, file_unique_id)
     except asyncpg.UniqueViolationError:
-        raise StoreError("proof_reused", "⛔️ هذا الإثبات مستخدم مسبقاً في طلب شحن آخر.")
+        raise StoreError("proof_reused", "هذا الإثبات مستخدم مسبقاً في طلب شحن آخر.")
     if not d:
         raise StoreError("bad_state", "لا يوجد طلب شحن مفتوح. ابدأ من «شحن الرصيد».")
     return dict(d)
@@ -82,7 +82,7 @@ async def attach_txid(core: Core, user_id: int, deposit_id: int, txid: str) -> d
             "UPDATE deposits SET proof_txid=$3, updated_at=now() "
             "WHERE id=$1 AND user_id=$2 AND status='awaiting_payment' RETURNING *", deposit_id, user_id, txid)
     except asyncpg.UniqueViolationError:
-        raise StoreError("proof_reused", "⛔️ رقم العملية هذا مستخدم مسبقاً في طلب شحن آخر.")
+        raise StoreError("proof_reused", "رقم العملية هذا مستخدم مسبقاً في طلب شحن آخر.")
     if not d:
         raise StoreError("bad_state", "لا يوجد طلب شحن مفتوح.")
     return dict(d)
@@ -117,15 +117,15 @@ async def submit(core: Core, user_id: int, deposit_id: int) -> dict:
 def admin_card(d: dict) -> str:
     uname = f"@{d['username']}" if d.get("username") else ""
     lines = [
-        "💰 <b>طلب شحن جديد</b>",
+        "<b>طلب شحن جديد</b>",
         f"المرجع: <code>{d['ref']}</code>",
         f"المستخدم: {uname} <code>{d['user_id']}</code>",
         f"المبلغ: <b>{fmt(d['amount'])} USDT</b>",
         f"Order ID: <code>{d['proof_txid'] or '—'}</code>",
-        "⚠️ تحقق من وصول المبلغ في Binance قبل الموافقة.",
+        "تحقق من وصول المبلغ في Binance قبل الموافقة.",
     ]
     if d.get("auto_verify_note"):
-        lines.append(f"🤖 التحقق الآلي: {d['auto_verify_note']}")
+        lines.append(f"التحقق الآلي: {d['auto_verify_note']}")
     return "\n".join(lines)
 
 

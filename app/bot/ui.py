@@ -94,7 +94,7 @@ def type_line(tp: dict) -> str:
 
 def type_card(tp: dict, tiers: list[dict] | None = None, lang: str = "ar") -> str:
     lines = [
-        f"🌾 <b>{e(tp['name'])}</b>",
+        f"<b>{e(tp['name'])}</b>",
         "",
         f"{t(lang, 'card_level')}: <b>{tp['lvl']}</b>",
         f"{t(lang, 'card_barn')}: <b>{tp['barn']:,}</b>",
@@ -125,17 +125,17 @@ def credentials_kb(login: str, password: str, lang: str = "ar") -> InlineKeyboar
     )
 
 
-ORDER_ICONS = {"pending": "⏳", "processing": "⚙️", "completed": "✅", "cancelled": "✖️", "needs_review": "⚠️"}
-DEP_ICONS = {"awaiting_payment": "⏳", "under_review": "🔎", "approved": "✅", "rejected": "❌", "cancelled": "✖️"}
+ORDER_ICONS = {"pending": "", "processing": "", "completed": "", "cancelled": "", "needs_review": ""}
+DEP_ICONS = {"awaiting_payment": "", "under_review": "", "approved": "", "rejected": "", "cancelled": ""}
 
 
 def order_line(o: dict, lang: str = "ar") -> str:
     snap = o["type_snapshot"]
-    return f"{ORDER_ICONS.get(o['status'], '•')} {snap['name']} — {fmt(o['price'])} USDT — {t(lang, 'st_' + o['status'])}"
+    return f"{snap['name']} — {fmt(o['price'])} USDT — {t(lang, 'st_' + o['status'])}"
 
 
 def deposit_line(d: dict, lang: str = "ar") -> str:
-    return (f"{DEP_ICONS.get(d['status'], '•')} {fmt(d['amount'])} USDT — {t(lang, 'dst_' + d['status'])} — "
+    return (f"{fmt(d['amount'])} USDT — {t(lang, 'dst_' + d['status'])} — "
             f"{dt(d['created_at'])}")
 
 
@@ -147,11 +147,11 @@ def tx_line(x: dict, lang: str = "ar") -> str:
 # admin-side helpers (Arabic only)
 def order_line_ar(o: dict) -> str:
     snap = o["type_snapshot"]
-    return f"{ORDER_ICONS.get(o['status'], '•')} {snap['name']} — {fmt(o['price'])} USDT — {ORD_LABELS[o['status']]}"
+    return f"{snap['name']} — {fmt(o['price'])} USDT — {ORD_LABELS[o['status']]}"
 
 
 def deposit_line_ar(d: dict) -> str:
-    return f"{DEP_ICONS.get(d['status'], '•')} {fmt(d['amount'])} USDT — {DEP_LABELS[d['status']]} — {dt(d['created_at'])}"
+    return f"{fmt(d['amount'])} USDT — {DEP_LABELS[d['status']]} — {dt(d['created_at'])}"
 
 
 def tx_line_ar(x: dict) -> str:

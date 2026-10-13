@@ -176,7 +176,7 @@ async def deliver(core: Core, order_id: int, *, actor: str = "system", part: tup
         uname = f"@{user['username']}" if user and user["username"] else str(o["user_id"])
         try:
             await core.messenger.notify_admins(
-                f"🛒 <b>عملية بيع جديدة</b>\nالطلب: <code>{o['ref']}</code>\nالنوع: {snap['name']} — LVL {snap['lvl']}\n"
+                f"<b>عملية بيع جديدة</b>\nالطلب: <code>{o['ref']}</code>\nالنوع: {snap['name']} — LVL {snap['lvl']}\n"
                 f"السعر: {fmt(o['price'])} USDT\nالمشتري: {uname} (<code>{o['user_id']}</code>)", perm="orders")
         except Exception:
             log.exception("sale notification failed")
@@ -222,7 +222,7 @@ async def deliver_batch(core: Core, order_ids: list[int]) -> bool:
         total = sum(r["price"] for r in rs)
         try:
             await core.messenger.notify_admins(
-                f"🛒 <b>عملية بيع جديدة</b> — {len(rs)} مزارع\nالطلب: <code>{first['ref'].rsplit('-', 1)[0]}</code>\n"
+                f"<b>عملية بيع جديدة</b> — {len(rs)} مزارع\nالطلب: <code>{first['ref'].rsplit('-', 1)[0]}</code>\n"
                 f"النوع: {str(snap['name']).replace('<', '&lt;')} — LVL {snap['lvl']}\n"
                 f"الإجمالي: {fmt(total)} USDT\nالمشتري: {uname} (<code>{first['user_id']}</code>)", perm="orders")
         except Exception:

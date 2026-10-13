@@ -93,18 +93,18 @@ async def _menu(core: Core, role: str):
     review = await core.pool.fetchval("SELECT count(*) FROM orders WHERE status='needs_review'")
     alerts = await core.pool.fetchval("SELECT count(*) FROM alerts WHERE NOT is_read")
     rows = [
-        [btn("📊 الإحصائيات", "a:stats"), btn(f"🔔 التنبيهات ({alerts})", "a:alerts")],
-        [btn(f"💰 طلبات الشحن ({pending})", "a:deps"), btn(f"🧾 الطلبات ⚠️{review}", "a:ords:review:0")],
+        [btn("الإحصائيات", "a:stats"), btn(f"التنبيهات ({alerts})", "a:alerts")],
+        [btn(f"طلبات الشحن ({pending})", "a:deps"), btn(f"الطلبات {review}", "a:ords:review:0")],
     ]
     if admins.has_perm(role, "catalog"):
-        rows.append([btn("📦 الأنواع والمخزون", "a:types"), btn("➕ نوع جديد", "a:tnew")])
+        rows.append([btn("الأنواع والمخزون", "a:types"), btn("نوع جديد", "a:tnew")])
     if admins.has_perm(role, "users"):
-        rows.append([btn("👤 بحث عن مستخدم", "a:usearch"), btn("⚙️ الإعدادات", "a:set")])
-    row = [btn("📜 سجل النشاط", "a:audit")]
+        rows.append([btn("بحث عن مستخدم", "a:usearch"), btn("الإعدادات", "a:set")])
+    row = [btn("سجل النشاط", "a:audit")]
     if admins.has_perm(role, "backup"):
-        row.append(btn("🗄 نسخة احتياطية", "a:backup"))
+        row.append(btn("نسخة احتياطية", "a:backup"))
     rows.append(row)
-    text = (f"🛠 <b>لوحة الإدارة</b> — صلاحيتك: {admins.ROLES.get(role, role)}\n\n"
+    text = (f"<b>لوحة الإدارة</b> — صلاحيتك: {admins.ROLES.get(role, role)}\n\n"
             "لإدارة متقدمة استخدم لوحة التحكم على الويب.")
     return text, kb(*rows)
 
@@ -125,7 +125,7 @@ async def admin_menu_cb(cb: CallbackQuery, state: FSMContext, core: Core, role: 
     await cb.answer()
 
 
-BACK = [btn("↩️ القائمة", "a:menu")]
+BACK = [btn("القائمة", "a:menu")]
 
 
 # ================================================================== stats
@@ -134,19 +134,19 @@ async def stats_cb(cb: CallbackQuery, core: Core):
     s = await stats.overview(core)
     sa, de, us, st = s["sales"], s["deposits"], s["users"], s["stock"]
     text = (
-        "📊 <b>الإحصائيات</b>\n\n"
-        f"🛒 المبيعات المكتملة: <b>{sa['completed']}</b>\n"
-        f"💵 إجمالي الإيرادات: <b>{fmt(sa['revenue'])} USDT</b>\n"
-        f"📅 اليوم: {sa['today_count']} عملية — {fmt(sa['today_revenue'])} USDT\n"
-        f"🗓 آخر 30 يوماً: {fmt(sa['month_revenue'])} USDT\n\n"
-        f"💳 إجمالي المشحون (مقبول): <b>{fmt(de['total_deposited'])} USDT</b>\n"
-        f"🔎 بانتظار المراجعة: {de['pending_review']} ({fmt(de['pending_amount'])} USDT)\n\n"
-        f"👥 المستخدمون: {us['users']} (جدد اليوم: {us['new_today']})\n"
-        f"💼 مجموع أرصدة العملاء: <b>{fmt(us['balances'])} USDT</b>\n\n"
-        f"📦 المخزون المتوفر: {st['available']} (قيمته {fmt(st['stock_value'])} USDT)\n"
-        f"✅ المباع: {st['sold']} • محجوز: {st['reserved']} • موقوف: {st['disabled']}\n"
-        f"🚫 أنواع نفد مخزونها: {s['out_of_stock_types']}\n"
-        f"⚠️ طلبات تحتاج مراجعة: {sa['needs_review']}"
+        "<b>الإحصائيات</b>\n\n"
+        f"المبيعات المكتملة: <b>{sa['completed']}</b>\n"
+        f"إجمالي الإيرادات: <b>{fmt(sa['revenue'])} USDT</b>\n"
+        f"اليوم: {sa['today_count']} عملية — {fmt(sa['today_revenue'])} USDT\n"
+        f"آخر 30 يوماً: {fmt(sa['month_revenue'])} USDT\n\n"
+        f"إجمالي المشحون (مقبول): <b>{fmt(de['total_deposited'])} USDT</b>\n"
+        f"بانتظار المراجعة: {de['pending_review']} ({fmt(de['pending_amount'])} USDT)\n\n"
+        f"المستخدمون: {us['users']} (جدد اليوم: {us['new_today']})\n"
+        f"مجموع أرصدة العملاء: <b>{fmt(us['balances'])} USDT</b>\n\n"
+        f"المخزون المتوفر: {st['available']} (قيمته {fmt(st['stock_value'])} USDT)\n"
+        f"المباع: {st['sold']} • محجوز: {st['reserved']} • موقوف: {st['disabled']}\n"
+        f"أنواع نفد مخزونها: {s['out_of_stock_types']}\n"
+        f"طلبات تحتاج مراجعة: {sa['needs_review']}"
     )
     await reply(cb, text, kb(BACK))
     await cb.answer()
@@ -155,12 +155,12 @@ async def stats_cb(cb: CallbackQuery, core: Core):
 @router.callback_query(F.data == "a:alerts")
 async def alerts_cb(cb: CallbackQuery, core: Core):
     items = await system.list_alerts(core, unread_only=True, limit=15)
-    icons = {"error": "🚨", "warning": "⚠️", "info": "ℹ️"}
-    lines = ["🔔 <b>التنبيهات غير المقروءة</b>", ""] + [
+    icons = {"error": "", "warning": "", "info": ""}
+    lines = ["<b>التنبيهات غير المقروءة</b>", ""] + [
         f"{icons.get(a['level'], '•')} {dt(a['created_at'])} — {e(a['message'])}" for a in items]
     if not items:
-        lines.append("لا توجد تنبيهات جديدة ✅")
-    await reply(cb, "\n".join(lines), kb([btn("✔️ تعليم الكل كمقروء", "a:alread")] if items else [], BACK))
+        lines.append("لا توجد تنبيهات جديدة ")
+    await reply(cb, "\n".join(lines), kb([btn("تعليم الكل كمقروء", "a:alread")] if items else [], BACK))
     await cb.answer()
 
 
@@ -168,7 +168,7 @@ async def alerts_cb(cb: CallbackQuery, core: Core):
 async def alerts_read(cb: CallbackQuery, core: Core):
     await system.mark_alerts_read(core)
     await cb.answer("تم.")
-    await reply(cb, "✔️ تم تعليم جميع التنبيهات كمقروءة.", kb(BACK))
+    await reply(cb, "تم تعليم جميع التنبيهات كمقروءة.", kb(BACK))
 
 
 # ================================================================== types
@@ -176,12 +176,12 @@ async def _types_list(core: Core, filters: dict | None = None):
     types = await catalog.list_types(core, filters=filters)
     rows = []
     for t in types:
-        state = "" if t["is_active"] else "⏸ "
-        rows.append([btn(f"{state}{t['name']} • {fmt(t['price'])}$ • ✅{t['available_raw']} 💰{t['sold']}",
+        state = "" if t["is_active"] else "[موقوف] "
+        rows.append([btn(f"{state}{t['name']} • {fmt(t['price'])}$ • متوفر {t['available_raw']} • مباع {t['sold']}",
                          f"a:t:{t['id']}")])
-    rows.append([btn("➕ نوع جديد", "a:tnew"), btn("🔎 بحث/تصفية", "a:tsearch")])
+    rows.append([btn("نوع جديد", "a:tnew"), btn("بحث/تصفية", "a:tsearch")])
     rows.append(BACK)
-    head = "📦 <b>الأنواع والمخزون</b>\n✅ متوفر • 💰 مباع\n"
+    head = "<b>الأنواع والمخزون</b>\n"
     if not types:
         head += "\nلا توجد أنواع."
     return head, kb(*rows)
@@ -219,7 +219,7 @@ async def type_new(cb: CallbackQuery, state: FSMContext, role: str):
         return
     await state.set_state(A.new_type)
     await cb.message.answer(
-        "➕ <b>نوع مزرعة جديد</b>\nأرسل البيانات بهذا الترتيب في سطر واحد:\n"
+        "<b>نوع مزرعة جديد</b>\nأرسل البيانات بهذا الترتيب في سطر واحد:\n"
         "<code>LVL Barn Silo Price [الاسم]</code>\n\nمثال:\n<code>70 4000 3000 10</code>\n"
         "<code>85 5500 5000 18.5 مزرعة VIP</code>\n\n/cancel للإلغاء")
     await cb.answer()
@@ -240,11 +240,11 @@ async def type_new_save(message: Message, state: FSMContext, core: Core):
     try:
         t = await catalog.create_type(core, actor(message.from_user.id), _parse_type_line(message.text))
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         return
     await state.clear()
-    await message.answer(f"✅ تم إنشاء النوع «{e(t['name'])}».\nأضف الآن الحسابات التابعة له:",
-                         reply_markup=kb([btn("➕ إضافة حسابات", f"a:ta:{t['id']}")], [btn("📦 فتح النوع", f"a:t:{t['id']}")]))
+    await message.answer(f"تم إنشاء النوع «{e(t['name'])}».\nأضف الآن الحسابات التابعة له:",
+                         reply_markup=kb([btn("إضافة حسابات", f"a:ta:{t['id']}")], [btn("فتح النوع", f"a:t:{t['id']}")]))
 
 
 async def _type_view(core: Core, type_id: int):
@@ -252,23 +252,23 @@ async def _type_view(core: Core, type_id: int):
     if not t:
         return "النوع غير موجود.", kb(BACK)
     tiers = await catalog.price_tiers(core, type_id)
-    text = (f"🌾 <b>{e(t['name'])}</b> {'(⏸ موقوف عن البيع)' if not t['is_active'] else ''}\n"
+    text = (f"<b>{e(t['name'])}</b> {'(موقوف عن البيع)' if not t['is_active'] else ''}\n"
             f"{type_line(t)}\nالسعر: <b>{fmt(t['price'])} USDT</b>\n\n"
-            f"✅ متوفر: {t['available_raw']}\n🔒 محجوز: {t['reserved']}\n💰 مباع: {t['sold']}\n"
-            f"⏸ موقوف: {t['disabled']}\nالإجمالي: {t['total']}")
+            f"متوفر: {t['available_raw']}\nمحجوز: {t['reserved']}\nمباع: {t['sold']}\n"
+            f"موقوف: {t['disabled']}\nالإجمالي: {t['total']}")
     if len(tiers) > 1:
         text += "\n\nالأسعار المتوفرة: " + "، ".join(f"{fmt(x['price'])} ({x['available']})" for x in tiers)
     rows = [
-        [btn("➕ إضافة حسابات / CSV", f"a:ta:{type_id}")],
-        [btn("📋 الحسابات المتوفرة", f"a:tl:{type_id}:available:0"), btn("💰 المباعة", f"a:tl:{type_id}:sold:0")],
-        [btn("⏸ الموقوفة", f"a:tl:{type_id}:disabled:0"), btn("🔒 المحجوزة", f"a:tl:{type_id}:reserved:0")],
-        [btn("💲 تعديل السعر", f"a:tp:{type_id}"), btn("✏️ تعديل البيانات", f"a:te:{type_id}")],
-        [btn("▶️ تفعيل البيع" if not t["is_active"] else "⏸ إيقاف البيع", f"a:tt:{type_id}"),
-         btn("🖼 تغيير الصورة" if t.get("photo_file_id") else "🖼 إضافة صورة", f"a:tph:{type_id}")],
+        [btn("إضافة حسابات / CSV", f"a:ta:{type_id}")],
+        [btn("الحسابات المتوفرة", f"a:tl:{type_id}:available:0"), btn("المباعة", f"a:tl:{type_id}:sold:0")],
+        [btn("الموقوفة", f"a:tl:{type_id}:disabled:0"), btn("المحجوزة", f"a:tl:{type_id}:reserved:0")],
+        [btn("تعديل السعر", f"a:tp:{type_id}"), btn("تعديل البيانات", f"a:te:{type_id}")],
+        [btn("تفعيل البيع" if not t["is_active"] else "إيقاف البيع", f"a:tt:{type_id}"),
+         btn("تغيير الصورة" if t.get("photo_file_id") else "إضافة صورة", f"a:tph:{type_id}")],
     ]
     if t["total"] == 0:
-        rows.append([btn("🗑 حذف النوع", f"a:td:{type_id}")])
-    rows.append([btn("↩️ الأنواع", "a:types")])
+        rows.append([btn("حذف النوع", f"a:td:{type_id}")])
+    rows.append([btn("الأنواع", "a:types")])
     return text, kb(*rows)
 
 
@@ -314,7 +314,7 @@ async def type_price(cb: CallbackQuery, state: FSMContext, role: str):
         return
     await state.set_state(A.type_price)
     await state.update_data(type_id=int(cb.data.split(":")[2]))
-    await cb.message.answer("💲 أرسل السعر الجديد للنوع بالكامل (USDT):\n"
+    await cb.message.answer("أرسل السعر الجديد للنوع بالكامل (USDT):\n"
                             "ملاحظة: الحسابات التي لها سعر خاص تحتفظ بسعرها.")
     await cb.answer()
 
@@ -325,11 +325,11 @@ async def type_price_save(message: Message, state: FSMContext, core: Core):
     try:
         await catalog.update_type(core, actor(message.from_user.id), data["type_id"], {"price": message.text})
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         return
     await state.clear()
     text, markup = await _type_view(core, data["type_id"])
-    await message.answer("✅ تم تحديث السعر.\n\n" + text, reply_markup=markup)
+    await message.answer("تم تحديث السعر.\n\n" + text, reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("a:te:"))
@@ -338,7 +338,7 @@ async def type_edit(cb: CallbackQuery, state: FSMContext, role: str):
         return
     await state.set_state(A.edit_type)
     await state.update_data(type_id=int(cb.data.split(":")[2]))
-    await cb.message.answer("✏️ أرسل البيانات الجديدة:\n<code>LVL Barn Silo Price [الاسم]</code>")
+    await cb.message.answer("أرسل البيانات الجديدة:\n<code>LVL Barn Silo Price [الاسم]</code>")
     await cb.answer()
 
 
@@ -348,11 +348,11 @@ async def type_edit_save(message: Message, state: FSMContext, core: Core):
     try:
         await catalog.update_type(core, actor(message.from_user.id), data["type_id"], _parse_type_line(message.text))
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         return
     await state.clear()
     text, markup = await _type_view(core, data["type_id"])
-    await message.answer("✅ تم التحديث.\n\n" + text, reply_markup=markup)
+    await message.answer("تم التحديث.\n\n" + text, reply_markup=markup)
 
 
 # --------------------------------------------------------------- accounts
@@ -363,7 +363,7 @@ async def accounts_add(cb: CallbackQuery, state: FSMContext, role: str):
     await state.set_state(A.add_accounts)
     await state.update_data(type_id=int(cb.data.split(":")[2]), items=None)
     await cb.message.answer(
-        "➕ <b>إضافة حسابات</b>\n\nأرسل الحسابات نصاً، حساب في كل سطر:\n"
+        "<b>إضافة حسابات</b>\n\nأرسل الحسابات نصاً، حساب في كل سطر:\n"
         "<code>ID:Password</code>\nأو <code>ID,Password,السعر_الخاص</code> (السعر اختياري)\n\n"
         "أو أرسل ملف <b>CSV</b> بالأعمدة: <code>id,password,price,note</code>\n\n"
         "سيتم فحص التكرار والأخطاء قبل الحفظ. /cancel للإلغاء")
@@ -376,15 +376,15 @@ async def _preview(message: Message, state: FSMContext, core: Core, items: list[
     await state.update_data(items=[{k: v for k, v in x.items() if k != "hash"} | {"price": str(x["price"]) if x["price"] else None}
                                    for x in valid])
     problems = parse_errors + report["errors"] + report["duplicates_in_file"] + report["duplicates_in_db"]
-    text = (f"🔎 <b>نتيجة الفحص</b>\n\n✅ صالح للحفظ: <b>{len(valid)}</b>\n"
-            f"❌ أخطاء: {len(parse_errors) + len(report['errors'])}\n"
-            f"♻️ مكرر داخل الملف: {len(report['duplicates_in_file'])}\n"
-            f"📦 موجود مسبقاً: {len(report['duplicates_in_db'])}")
+    text = (f"<b>نتيجة الفحص</b>\n\nصالح للحفظ: <b>{len(valid)}</b>\n"
+            f"أخطاء: {len(parse_errors) + len(report['errors'])}\n"
+            f"مكرر داخل الملف: {len(report['duplicates_in_file'])}\n"
+            f"موجود مسبقاً: {len(report['duplicates_in_db'])}")
     if problems:
         text += "\n\n" + "\n".join(e(p) for p in problems[:20])
         if len(problems) > 20:
             text += f"\n… و{len(problems) - 20} أخرى"
-    markup = kb([btn(f"✅ حفظ {len(valid)} حساب", "a:imp:ok")] if valid else [], [btn("❌ إلغاء", "a:imp:no")])
+    markup = kb([btn(f"حفظ {len(valid)} حساب", "a:imp:ok")] if valid else [], [btn("إلغاء", "a:imp:no")])
     await message.answer(text, reply_markup=markup)
 
 
@@ -392,7 +392,7 @@ async def _preview(message: Message, state: FSMContext, core: Core, items: list[
 async def accounts_csv(message: Message, state: FSMContext, core: Core, bot: Bot):
     doc = message.document
     if doc.file_size and doc.file_size > 2_000_000:
-        await message.answer("⚠️ الملف أكبر من 2MB.")
+        await message.answer("الملف أكبر من 2MB.")
         return
     buf = await bot.download(doc)
     items, errors = catalog.parse_csv(buf.read())
@@ -420,9 +420,9 @@ async def accounts_save(cb: CallbackQuery, state: FSMContext, core: Core):
     report = await catalog.add_accounts(core, actor(cb.from_user.id), data["type_id"], items)
     await state.clear()
     await cb.answer()
-    await reply(cb, f"✅ تم حفظ <b>{report['inserted']}</b> حساب.\n"
+    await reply(cb, f"تم حفظ <b>{report['inserted']}</b> حساب.\n"
                     f"تم تخطي: {len(items) - report['inserted']}",
-                kb([btn("➕ إضافة المزيد", f"a:ta:{data['type_id']}")], [btn("📦 فتح النوع", f"a:t:{data['type_id']}")]))
+                kb([btn("إضافة المزيد", f"a:ta:{data['type_id']}")], [btn("فتح النوع", f"a:t:{data['type_id']}")]))
 
 
 @router.callback_query(F.data == "a:imp:no")
@@ -440,15 +440,15 @@ async def accounts_list(cb: CallbackQuery, core: Core, role: str):
     type_id, page = int(type_id), int(page)
     items = await catalog.list_accounts(core, type_id, status, limit=10, offset=page * 10)
     rows = [[btn(f"#{a['id']} {a['login_hint']} • {fmt(a['effective_price'])}$"
-                 + (" ★" if a["custom_price"] else "") + (f" • {a['order_ref']}" if a["order_ref"] else ""),
+                 + (" (خاص)" if a["custom_price"] else "") + (f" • {a['order_ref']}" if a["order_ref"] else ""),
                  f"a:ac:{a['id']}")] for a in items]
     nav = []
     if page > 0:
-        nav.append(btn("◀️", f"a:tl:{type_id}:{status}:{page - 1}"))
+        nav.append(btn("", f"a:tl:{type_id}:{status}:{page - 1}"))
     if len(items) == 10:
-        nav.append(btn("▶️", f"a:tl:{type_id}:{status}:{page + 1}"))
-    rows += [nav, [btn("↩️ النوع", f"a:t:{type_id}")]]
-    head = f"📋 الحسابات ({ACC_LABELS[status]}) — صفحة {page + 1}\n★ = سعر خاص"
+        nav.append(btn("", f"a:tl:{type_id}:{status}:{page + 1}"))
+    rows += [nav, [btn("النوع", f"a:t:{type_id}")]]
+    head = f"الحسابات ({ACC_LABELS[status]}) — صفحة {page + 1}\n= سعر خاص"
     if not items:
         head += "\n\nلا توجد حسابات."
     await reply(cb, head, kb(*rows))
@@ -460,19 +460,19 @@ async def _account_view(core: Core, account_id: int):
     if not rs:
         return "الحساب غير موجود.", kb(BACK)
     a = rs[0]
-    text = (f"🔐 <b>حساب #{a['id']}</b>\nالنوع: {e(a['type_name'])}\nID: {e(a['login_hint'])} (مخفي)\n"
+    text = (f"<b>حساب #{a['id']}</b>\nالنوع: {e(a['type_name'])}\nID: {e(a['login_hint'])} (مخفي)\n"
             f"الحالة: <b>{ACC_LABELS[a['status']]}</b>\nالسعر الفعلي: {fmt(a['effective_price'])} USDT"
             + (" (سعر خاص)" if a["custom_price"] else "") +
             f"\nأُضيف: {dt(a['created_at'])}" + (f"\nبيع: {dt(a['sold_at'])} — {a['order_ref']}" if a["sold_at"] else "")
             + (f"\nملاحظة: {e(a['note'])}" if a["note"] else ""))
     rows = []
     if a["status"] in ("available", "disabled"):
-        rows.append([btn("⏸ إيقاف عن البيع" if a["status"] == "available" else "▶️ إتاحة للبيع", f"a:act:{a['id']}"),
-                     btn("💲 سعر خاص", f"a:acp:{a['id']}")])
+        rows.append([btn("إيقاف عن البيع" if a["status"] == "available" else "إتاحة للبيع", f"a:act:{a['id']}"),
+                     btn("سعر خاص", f"a:acp:{a['id']}")])
         if not a["order_ref"]:
-            rows.append([btn("🗑 حذف", f"a:acd:{a['id']}")])
-        rows.append([btn("🖼 صورة هذا الحساب" + (" ✅" if a.get("has_photo") else ""), f"a:acph:{a['id']}")])
-    rows.append([btn("↩️ النوع", f"a:t:{a['type_id']}")])
+            rows.append([btn("حذف", f"a:acd:{a['id']}")])
+        rows.append([btn("صورة هذا الحساب" + (" (موجودة)" if a.get("has_photo") else ""), f"a:acph:{a['id']}")])
+    rows.append([btn("النوع", f"a:t:{a['type_id']}")])
     return text, kb(*rows)
 
 
@@ -524,7 +524,7 @@ async def account_price(cb: CallbackQuery, state: FSMContext, role: str):
         return
     await state.set_state(A.acc_price)
     await state.update_data(account_id=int(cb.data.split(":")[2]))
-    await cb.message.answer("💲 أرسل السعر الخاص لهذا الحساب، أو <code>0</code> لإلغاء السعر الخاص.")
+    await cb.message.answer("أرسل السعر الخاص لهذا الحساب، أو <code>0</code> لإلغاء السعر الخاص.")
     await cb.answer()
 
 
@@ -536,11 +536,11 @@ async def account_price_save(message: Message, state: FSMContext, core: Core):
         await catalog.update_account(core, actor(message.from_user.id), data["account_id"],
                                      {"custom_price": None if val in ("0", "0.0", "-") else val})
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         return
     await state.clear()
     text, markup = await _account_view(core, data["account_id"])
-    await message.answer("✅ تم.\n\n" + text, reply_markup=markup)
+    await message.answer("تم.\n\n" + text, reply_markup=markup)
 
 
 # =============================================================== deposits
@@ -551,9 +551,9 @@ async def deposits_list(cb: CallbackQuery, core: Core, role: str):
     items = await deposits.list_deposits(core, status="under_review", limit=20)
     rows = [[btn(f"{fmt(d['amount'])} USDT • {d['user_id']} • {dt(d['created_at'])}", f"a:dp:{d['id']}")]
             for d in items]
-    rows.append([btn("📜 آخر الطلبات المراجَعة", "a:depsh")])
+    rows.append([btn("آخر الطلبات المراجَعة", "a:depsh")])
     rows.append(BACK)
-    await reply(cb, f"💰 <b>طلبات الشحن قيد المراجعة</b> ({len(items)})" + ("" if items else "\n\nلا توجد طلبات ✅"),
+    await reply(cb, f"<b>طلبات الشحن قيد المراجعة</b> ({len(items)})" + ("" if items else "\n\nلا توجد طلبات "),
                 kb(*rows))
     await cb.answer()
 
@@ -563,8 +563,8 @@ async def deposits_history(cb: CallbackQuery, core: Core, role: str):
     if not await need(cb, role, "deposits"):
         return
     items = await deposits.list_deposits(core, limit=20)
-    lines = ["📜 <b>آخر طلبات الشحن</b>", ""] + [f"{deposit_line(d)} • <code>{d['user_id']}</code>" for d in items]
-    await reply(cb, "\n".join(lines), kb([btn("↩️ رجوع", "a:deps")]))
+    lines = ["<b>آخر طلبات الشحن</b>", ""] + [f"{deposit_line(d)} • <code>{d['user_id']}</code>" for d in items]
+    await reply(cb, "\n".join(lines), kb([btn("رجوع", "a:deps")]))
     await cb.answer()
 
 
@@ -606,10 +606,10 @@ async def deposit_approve(cb: CallbackQuery, core: Core, role: str):
         d = await deposits.approve(core, actor(cb.from_user.id), int(cb.data.split(":")[2]))
     except StoreError as ex:
         await cb.answer(ex.message, show_alert=True)
-        await _edit_review_msg(cb, f"ℹ️ {ex.message}")
+        await _edit_review_msg(cb, f"{ex.message}")
         return
-    await cb.answer("تم القبول وإضافة الرصيد ✅")
-    await _edit_review_msg(cb, f"✅ تم القبول بواسطة {e(cb.from_user.full_name)} — أُضيف {fmt(d['credited_amount'])} USDT")
+    await cb.answer("تم القبول وإضافة الرصيد ")
+    await _edit_review_msg(cb, f"تم القبول بواسطة {e(cb.from_user.full_name)} — أُضيف {fmt(d['credited_amount'])} USDT")
 
 
 @router.callback_query(F.data.startswith("a:dam:"))
@@ -618,7 +618,7 @@ async def deposit_amount_ask(cb: CallbackQuery, state: FSMContext, role: str):
         return
     await state.set_state(A.dep_amount)
     await state.update_data(deposit_id=int(cb.data.split(":")[2]))
-    await cb.message.answer("✏️ أرسل المبلغ الذي وصل فعلياً (USDT) ليُضاف بدلاً من المبلغ المطلوب:")
+    await cb.message.answer("أرسل المبلغ الذي وصل فعلياً (USDT) ليُضاف بدلاً من المبلغ المطلوب:")
     await cb.answer()
 
 
@@ -629,12 +629,12 @@ async def deposit_amount_save(message: Message, state: FSMContext, core: Core):
         d = await deposits.approve(core, actor(message.from_user.id), data["deposit_id"], credited=message.text,
                                    note="مبلغ معدّل من المشرف")
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         if ex.code == "already":
             await state.clear()
         return
     await state.clear()
-    await message.answer(f"✅ تم قبول {d['ref']} وإضافة {fmt(d['credited_amount'])} USDT.")
+    await message.answer(f"تم قبول {d['ref']} وإضافة {fmt(d['credited_amount'])} USDT.")
 
 
 @router.callback_query(F.data.startswith("a:dr:"))
@@ -644,7 +644,7 @@ async def deposit_reject_ask(cb: CallbackQuery, state: FSMContext, role: str):
     dep_id = int(cb.data.split(":")[2])
     await state.set_state(A.dep_reason)
     await state.update_data(deposit_id=dep_id)
-    await cb.message.answer("❌ اختر سبب الرفض أو اكتبه:",
+    await cb.message.answer("اختر سبب الرفض أو اكتبه:",
                             reply_markup=kb(*[[btn(r, f"a:drq:{dep_id}:{i}")] for i, r in enumerate(QUICK_REJECT)]))
     await cb.answer()
 
@@ -653,10 +653,10 @@ async def _do_reject(target, core: Core, admin_id: int, dep_id: int, reason: str
     try:
         d = await deposits.reject(core, actor(admin_id), dep_id, reason)
     except StoreError as ex:
-        await reply(target, f"⚠️ {e(ex.message)}", edit=False)
+        await reply(target, f"{e(ex.message)}", edit=False)
         return
     await state.clear()
-    await reply(target, f"❌ تم رفض {d['ref']} — السبب: {e(reason)}", edit=False)
+    await reply(target, f"تم رفض {d['ref']} — السبب: {e(reason)}", edit=False)
 
 
 @router.callback_query(F.data.startswith("a:drq:"))
@@ -686,11 +686,11 @@ async def orders_list(cb: CallbackQuery, core: Core, role: str):
     rows = [[btn(f"{order_line(o)[:45]} • {o['user_id']}", f"a:o:{o['id']}")] for o in items]
     nav = []
     if page > 0:
-        nav.append(btn("◀️", f"a:ords:{flt}:{page - 1}"))
+        nav.append(btn("", f"a:ords:{flt}:{page - 1}"))
     if len(items) == 10:
-        nav.append(btn("▶️", f"a:ords:{flt}:{page + 1}"))
-    rows += [nav, [btn("⚠️ تحتاج مراجعة", "a:ords:review:0"), btn("📋 الكل", "a:ords:all:0")], BACK]
-    title = "⚠️ الطلبات التي تحتاج مراجعة" if flt == "review" else "🧾 جميع الطلبات"
+        nav.append(btn("", f"a:ords:{flt}:{page + 1}"))
+    rows += [nav, [btn("تحتاج مراجعة", "a:ords:review:0"), btn("الكل", "a:ords:all:0")], BACK]
+    title = "الطلبات التي تحتاج مراجعة" if flt == "review" else "جميع الطلبات"
     await reply(cb, f"<b>{title}</b>" + ("" if items else "\n\nلا توجد طلبات."), kb(*rows))
     await cb.answer()
 
@@ -700,7 +700,7 @@ async def _order_view(core: Core, order_id: int):
     if not o:
         return "غير موجود", kb(BACK)
     snap = o["type_snapshot"]
-    text = (f"🧾 <b>{o['ref']}</b>\nالمشتري: <code>{o['user_id']}</code> {('@' + e(o['username'])) if o['username'] else ''}\n"
+    text = (f"<b>{o['ref']}</b>\nالمشتري: <code>{o['user_id']}</code> {('@' + e(o['username'])) if o['username'] else ''}\n"
             f"النوع: {e(snap['name'])} — LVL {snap['lvl']}\nالسعر: {fmt(o['price'])} USDT\n"
             f"الحالة: <b>{ORD_LABELS[o['status']]}</b>\nالحساب: {('#' + str(o['account_id']) + ' ' + e(o['login_hint'])) if o['account_id'] else '—'}\n"
             f"أُنشئ: {dt(o['created_at'])}\nسُلّم: {dt(o['delivered_at'])}")
@@ -710,10 +710,10 @@ async def _order_view(core: Core, order_id: int):
         text += f"\nملاحظة الإدارة: {e(o['admin_note'])}"
     rows = []
     if o["status"] == "needs_review":
-        rows.append([btn("🔁 إعادة الإرسال", f"a:or:{o['id']}"), btn("✅ تم التسليم يدوياً", f"a:om:{o['id']}")])
+        rows.append([btn("إعادة الإرسال", f"a:or:{o['id']}"), btn("تم التسليم يدوياً", f"a:om:{o['id']}")])
     if o["status"] in ("needs_review", "completed", "processing"):
-        rows.append([btn("↩️ استرداد المبلغ", f"a:orf:{o['id']}")])
-    rows.append([btn("↩️ الطلبات", "a:ords:all:0")])
+        rows.append([btn("استرداد المبلغ", f"a:orf:{o['id']}")])
+    rows.append([btn("الطلبات", "a:ords:all:0")])
     return text, kb(*rows)
 
 
@@ -736,7 +736,7 @@ async def order_redeliver(cb: CallbackQuery, core: Core, role: str):
     except StoreError as ex:
         await cb.answer(ex.message, show_alert=True)
         return
-    await cb.answer("✅ تم التسليم" if ok else "فشل الإرسال مجدداً (ربما حظر المستخدم البوت).", show_alert=not ok)
+    await cb.answer("تم التسليم" if ok else "فشل الإرسال مجدداً (ربما حظر المستخدم البوت).", show_alert=not ok)
     text, markup = await _order_view(core, oid)
     await reply(cb, text, markup)
 
@@ -762,7 +762,7 @@ async def order_refund_ask(cb: CallbackQuery, state: FSMContext, role: str):
         return
     await state.set_state(A.refund_reason)
     await state.update_data(order_id=int(cb.data.split(":")[2]))
-    await cb.message.answer("↩️ اكتب سبب الاسترداد (سيظهر للزبون):")
+    await cb.message.answer("اكتب سبب الاسترداد (سيظهر للزبون):")
     await cb.answer()
 
 
@@ -787,7 +787,7 @@ async def order_refund_do(cb: CallbackQuery, state: FSMContext, core: Core):
         return
     await state.clear()
     await cb.answer("تم الاسترداد")
-    await reply(cb, f"✅ تم إلغاء {o['ref']} واسترداد {fmt(o['price'])} USDT للزبون.", kb(BACK))
+    await reply(cb, f"تم إلغاء {o['ref']} واسترداد {fmt(o['price'])} USDT للزبون.", kb(BACK))
 
 
 # ================================================================== users
@@ -796,7 +796,7 @@ async def user_search(cb: CallbackQuery, state: FSMContext, role: str):
     if not await need(cb, role, "users"):
         return
     await state.set_state(A.user_search)
-    await cb.message.answer("👤 أرسل Telegram User ID للمستخدم (أرقام فقط) أو اسم المستخدم:")
+    await cb.message.answer("أرسل Telegram User ID للمستخدم (أرقام فقط) أو اسم المستخدم:")
     await cb.answer()
 
 
@@ -809,14 +809,14 @@ async def _user_view(core: Core, user_id: int):
         "FROM orders WHERE user_id=$1", user_id)
     dep = await core.pool.fetchval("SELECT COALESCE(SUM(credited_amount),0) FROM deposits WHERE user_id=$1 AND status='approved'",
                                    user_id)
-    text = (f"👤 <b>{e(u['first_name'] or '')}</b> {('@' + e(u['username'])) if u['username'] else ''}\n"
+    text = (f"<b>{e(u['first_name'] or '')}</b> {('@' + e(u['username'])) if u['username'] else ''}\n"
             f"ID: <code>{u['id']}</code>\nالرصيد: <b>{fmt(u['balance'])} USDT</b>\n"
             f"المشتريات: {stats_['done']} ({fmt(stats_['spent'])} USDT)\nإجمالي الشحن: {fmt(dep)} USDT\n"
             f"الانضمام: {dt(u['created_at'])}\nآخر نشاط: {dt(u['last_seen_at'])}"
-            + ("\n⛔️ <b>محظور</b>" if u["is_banned"] else ""))
-    markup = kb([btn("➕ إضافة رصيد", f"a:uc:{user_id}:1"), btn("➖ خصم رصيد", f"a:uc:{user_id}:-1")],
-                [btn("📜 الحركات المالية", f"a:uh:{user_id}"), btn("🧾 طلباته", f"a:uo:{user_id}")],
-                [btn("✅ فك الحظر" if u["is_banned"] else "⛔️ حظر", f"a:ub:{user_id}")], BACK)
+            + ("\n<b>محظور</b>" if u["is_banned"] else ""))
+    markup = kb([btn("إضافة رصيد", f"a:uc:{user_id}:1"), btn("خصم رصيد", f"a:uc:{user_id}:-1")],
+                [btn("الحركات المالية", f"a:uh:{user_id}"), btn("طلباته", f"a:uo:{user_id}")],
+                [btn("فك الحظر" if u["is_banned"] else "حظر", f"a:ub:{user_id}")], BACK)
     return text, markup
 
 
@@ -863,9 +863,9 @@ async def user_history(cb: CallbackQuery, core: Core, role: str):
         return
     uid = int(cb.data.split(":")[2])
     txs = await wallet.history(core, uid, limit=20)
-    lines = [f"📜 <b>حركات</b> <code>{uid}</code>", ""] + ([tx_line(t) + (f"\n   {e(t['reason'])}" if t["reason"] else "")
+    lines = [f"<b>حركات</b> <code>{uid}</code>", ""] + ([tx_line(t) + (f"\n   {e(t['reason'])}" if t["reason"] else "")
                                                            for t in txs] or ["لا توجد حركات."])
-    await reply(cb, "\n".join(lines)[:4000], kb([btn("↩️ المستخدم", f"a:u:{uid}")]))
+    await reply(cb, "\n".join(lines)[:4000], kb([btn("المستخدم", f"a:u:{uid}")]))
     await cb.answer()
 
 
@@ -876,8 +876,8 @@ async def user_orders(cb: CallbackQuery, core: Core, role: str):
     uid = int(cb.data.split(":")[2])
     items = await orders.list_orders(core, user_id=uid, limit=15)
     rows = [[btn(order_line(o)[:55], f"a:o:{o['id']}")] for o in items]
-    rows.append([btn("↩️ المستخدم", f"a:u:{uid}")])
-    await reply(cb, f"🧾 طلبات <code>{uid}</code>" + ("" if items else "\nلا توجد."), kb(*rows))
+    rows.append([btn("المستخدم", f"a:u:{uid}")])
+    await reply(cb, f"طلبات <code>{uid}</code>" + ("" if items else "\nلا توجد."), kb(*rows))
     await cb.answer()
 
 
@@ -888,7 +888,7 @@ async def user_adjust_ask(cb: CallbackQuery, state: FSMContext, role: str):
     _, _, uid, sign = cb.data.split(":")
     await state.set_state(A.user_amount)
     await state.update_data(user_id=int(uid), sign=int(sign))
-    await cb.message.answer(f"{'➕ إضافة' if sign == '1' else '➖ خصم'} رصيد — أرسل المبلغ (USDT):")
+    await cb.message.answer(f"{'إضافة' if sign == '1' else 'خصم'} رصيد — أرسل المبلغ (USDT):")
     await cb.answer()
 
 
@@ -900,11 +900,11 @@ async def user_adjust_amount(message: Message, state: FSMContext):
         if amt <= 0:
             raise StoreError("bad_amount", "المبلغ يجب أن يكون أكبر من صفر.")
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         return
     await state.update_data(amount=str(amt))
     await state.set_state(A.user_reason)
-    await message.answer("📝 اكتب سبب العملية (إلزامي، يُحفظ في السجل ويظهر للزبون):")
+    await message.answer("اكتب سبب العملية (إلزامي، يُحفظ في السجل ويظهر للزبون):")
 
 
 @router.message(A.user_reason, F.text)
@@ -915,13 +915,13 @@ async def user_adjust_reason(message: Message, state: FSMContext, core: Core):
         tx = await wallet.admin_adjust(core, actor(message.from_user.id), data["user_id"], amount, message.text,
                                        idempotency_key=f"adj:tg:{message.chat.id}:{message.message_id}")
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         if ex.code != "reason_required":
             await state.clear()
         return
     await state.clear()
     text, markup = await _user_view(core, data["user_id"])
-    await message.answer(f"✅ تمت العملية <code>{tx['ref']}</code>\n\n" + text, reply_markup=markup)
+    await message.answer(f"تمت العملية <code>{tx['ref']}</code>\n\n" + text, reply_markup=markup)
 
 
 # =============================================================== settings
@@ -931,20 +931,20 @@ async def settings_cb(cb: CallbackQuery, state: FSMContext, core: Core, role: st
         return
     await state.clear()
     s = await system.get_settings(core, fresh=True)
-    lines = ["⚙️ <b>الإعدادات</b>", ""]
+    lines = ["<b>الإعدادات</b>", ""]
     rows = []
-    rows.append([btn("🎨 أيقونات أزرار القائمة", "a:icons")])
+    rows.append([btn("أيقونات أزرار القائمة", "a:icons")])
     for key, (label, kind) in system.SETTINGS_SCHEMA.items():
         if kind == "icon":
             continue
         val = s.get(key, "")
         if kind == "bool":
-            shown = "✅ نعم" if val == "true" else "❌ لا"
+            shown = "نعم" if val == "true" else "لا"
             rows.append([btn(f"{label}: {shown}", f"a:sb:{key}")])
         else:
             short = (val[:40] + "…") if len(val) > 40 else val
             lines.append(f"• <b>{label}</b>: {e(short) or '—'}")
-            rows.append([btn(f"✏️ {label}", f"a:se:{key}")])
+            rows.append([btn(f"{label}", f"a:se:{key}")])
     rows.append(BACK)
     await reply(cb, "\n".join(lines), kb(*rows))
     await cb.answer()
@@ -968,7 +968,7 @@ async def setting_edit(cb: CallbackQuery, state: FSMContext, core: Core, role: s
     await state.set_state(A.setting_value)
     await state.update_data(key=key)
     cur = await system.setting(core, key)
-    await cb.message.answer(f"✏️ <b>{system.SETTINGS_SCHEMA[key][0]}</b>\nالقيمة الحالية:\n<code>{e(cur)}</code>\n\n"
+    await cb.message.answer(f"<b>{system.SETTINGS_SCHEMA[key][0]}</b>\nالقيمة الحالية:\n<code>{e(cur)}</code>\n\n"
                             "أرسل القيمة الجديدة، أو /cancel للإلغاء.")
     await cb.answer()
 
@@ -979,10 +979,10 @@ async def setting_save(message: Message, state: FSMContext, core: Core):
     try:
         await system.update_settings(core, actor(message.from_user.id), {data["key"]: message.text})
     except StoreError as ex:
-        await message.answer(f"⚠️ {e(ex.message)}")
+        await message.answer(f"{e(ex.message)}")
         return
     await state.clear()
-    await message.answer("✅ تم الحفظ.", reply_markup=kb([btn("⚙️ الإعدادات", "a:set")]))
+    await message.answer("تم الحفظ.", reply_markup=kb([btn("الإعدادات", "a:set")]))
 
 
 # ================================================================= photos
@@ -994,9 +994,9 @@ async def type_photo_ask(cb: CallbackQuery, state: FSMContext, core: Core, role:
     await state.set_state(A.type_photo)
     await state.update_data(type_id=type_id)
     has = await core.pool.fetchval("SELECT photo_file_id IS NOT NULL FROM farm_types WHERE id=$1", type_id)
-    await cb.message.answer("🖼 أرسل الآن صورة المزرعة لهذا النوع (تظهر للزبون عند فتح النوع وتُرسل مع بيانات "
+    await cb.message.answer("أرسل الآن صورة المزرعة لهذا النوع (تظهر للزبون عند فتح النوع وتُرسل مع بيانات "
                             "الحساب إذا لم يكن للحساب صورة خاصة).",
-                            reply_markup=kb([btn("🗑 حذف الصورة الحالية", f"a:tphd:{type_id}", "danger")] if has else []))
+                            reply_markup=kb([btn("حذف الصورة الحالية", f"a:tphd:{type_id}", "danger")] if has else []))
     await cb.answer()
 
 
@@ -1006,7 +1006,7 @@ async def type_photo_save(message: Message, state: FSMContext, core: Core):
     await catalog.set_type_photo(core, actor(message.from_user.id), data["type_id"], message.photo[-1].file_id)
     await state.clear()
     text, markup = await _type_view(core, data["type_id"])
-    await message.answer("✅ تم حفظ صورة النوع.\n\n" + text, reply_markup=markup)
+    await message.answer("تم حفظ صورة النوع.\n\n" + text, reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("a:tphd:"))
@@ -1028,7 +1028,7 @@ async def acc_photo_ask(cb: CallbackQuery, state: FSMContext, role: str):
     acc_id = int(cb.data.split(":")[2])
     await state.set_state(A.acc_photo)
     await state.update_data(account_id=acc_id)
-    await cb.message.answer("🖼 أرسل صورة هذه المزرعة (تُرسل للمشتري مع بيانات الدخول).\nأرسل <code>-</code> لحذف الصورة.")
+    await cb.message.answer("أرسل صورة هذه المزرعة (تُرسل للمشتري مع بيانات الدخول).\nأرسل <code>-</code> لحذف الصورة.")
     await cb.answer()
 
 
@@ -1039,7 +1039,7 @@ async def acc_photo_save(message: Message, state: FSMContext, core: Core):
                                     message.photo[-1].file_id if message.photo else None)
     await state.clear()
     text, markup = await _account_view(core, data["account_id"])
-    await message.answer("✅ تم.\n\n" + text, reply_markup=markup)
+    await message.answer("تم.\n\n" + text, reply_markup=markup)
 
 
 # ================================================================== icons
@@ -1053,13 +1053,13 @@ async def icons_menu(cb: CallbackQuery, state: FSMContext, core: Core, role: str
         return
     await state.clear()
     s = await system.get_settings(core, fresh=True)
-    rows = [[btn(f"{'✅' if s.get('icon_' + k) else '➕'} {label}", f"a:icon:{k}")] for k, label in ICON_KEYS.items()]
-    rows.append([btn("👁 معاينة القائمة", "a:iconprev"), btn("🧹 حذف كل الأيقونات", "a:iconclr", "danger")])
-    rows.append([btn("↩️ الإعدادات", "a:set")])
-    await reply(cb, "🎨 <b>أيقونات أزرار القائمة</b>\n\n"
+    rows = [[btn(f"{label}" + (" (مفعّلة)" if s.get('icon_' + k) else ""), f"a:icon:{k}")] for k, label in ICON_KEYS.items()]
+    rows.append([btn("معاينة القائمة", "a:iconprev"), btn("حذف كل الأيقونات", "a:iconclr", "danger")])
+    rows.append([btn("الإعدادات", "a:set")])
+    await reply(cb, "<b>أيقونات أزرار القائمة</b>\n\n"
                     "الأزرار ملوّنة تلقائياً. ولإظهار <b>أيقونة صورة حقيقية</b> بجانب كل زر: اختر الزر ثم أرسل "
                     "<b>إيموجي مميز (Custom Emoji)</b> من أي حزمة — مثلاً أيقونة محفظة أو بطاقة شحن أو سماعة دعم.\n\n"
-                    "⚠️ شرط من تيليجرام: صاحب البوت يجب أن يكون مشتركاً في <b>Telegram Premium</b>. "
+                    "شرط من تيليجرام: صاحب البوت يجب أن يكون مشتركاً في <b>Telegram Premium</b>. "
                     "إذا لم يكن كذلك يعود البوت تلقائياً للأيقونات العادية دون أي عطل.", kb(*rows))
     await cb.answer()
 
@@ -1086,14 +1086,14 @@ async def icon_save(message: Message, state: FSMContext, core: Core, role: str):
         if not ids and message.sticker and message.sticker.custom_emoji_id:
             ids = [message.sticker.custom_emoji_id]
         if not ids:
-            await message.answer("⚠️ لم أجد إيموجي مميز في رسالتك. أرسل Custom Emoji (من الإيموجي المتحركة/المميزة) "
+            await message.answer("لم أجد إيموجي مميز في رسالتك. أرسل Custom Emoji (من الإيموجي المتحركة/المميزة) "
                                  "وليس إيموجي عادي، أو <code>-</code> للإزالة.")
             return
         value = ids[0]
     await system.update_settings(core, actor(message.from_user.id), {f"icon_{key}": value})
     core.icons_broken = False
     await state.clear()
-    await message.answer("✅ تم الحفظ.", reply_markup=kb([btn("🎨 الأيقونات", "a:icons"), btn("👁 معاينة", "a:iconprev")]))
+    await message.answer("تم الحفظ.", reply_markup=kb([btn("الأيقونات", "a:icons"), btn("معاينة", "a:iconprev")]))
 
 
 @router.callback_query(F.data == "a:iconclr")
@@ -1109,9 +1109,9 @@ async def icons_preview(cb: CallbackQuery, core: Core, role: str, lang: str):
     from .customer import send_menu
     core.icons_broken = False
     await cb.answer()
-    m = await send_menu(cb.message, core, "👁 هذه هي القائمة كما يراها الزبون 👇", lang, True)
+    m = await send_menu(cb.message, core, "هذه هي القائمة كما يراها الزبون ", lang, True)
     if getattr(core, "icons_broken", False):
-        await cb.message.answer("⚠️ رفض تيليجرام الأيقونات المميزة (يتطلب Telegram Premium لصاحب البوت)، "
+        await cb.message.answer("رفض تيليجرام الأيقونات المميزة (يتطلب Telegram Premium لصاحب البوت)، "
                                 "لذلك تظهر الأيقونات العادية الملوّنة.")
 
 
@@ -1119,7 +1119,7 @@ async def icons_preview(cb: CallbackQuery, core: Core, role: str, lang: str):
 @router.callback_query(F.data == "a:audit")
 async def audit_cb(cb: CallbackQuery, core: Core, role: str):
     items = await system.list_audit(core, limit=20)
-    lines = ["📜 <b>سجل النشاط (آخر 20)</b>", ""] + [
+    lines = ["<b>سجل النشاط (آخر 20)</b>", ""] + [
         f"• {dt(a['created_at'])} <b>{e(a['actor'])}</b> — {e(a['action'])}"
         + (f" #{e(a['entity_id'])}" if a["entity_id"] else "") for a in items]
     await reply(cb, "\n".join(lines)[:4000], kb(BACK))
@@ -1130,13 +1130,13 @@ async def audit_cb(cb: CallbackQuery, core: Core, role: str):
 async def backup_cb(cb: CallbackQuery, core: Core, role: str):
     if not await need(cb, role, "backup"):
         return
-    await cb.answer("⏳ جاري إنشاء النسخة…")
+    await cb.answer("جاري إنشاء النسخة…")
     try:
         path = await backup.make_backup(core)
     except StoreError as ex:
-        await cb.message.answer(f"⚠️ {e(ex.message)}")
+        await cb.message.answer(f"{e(ex.message)}")
         return
-    await cb.message.answer_document(FSInputFile(path), caption=f"🗄 نسخة احتياطية: {path.name}\n"
+    await cb.message.answer_document(FSInputFile(path), caption=f"نسخة احتياطية: {path.name}\n"
                                      "احتفظ بها مع مفتاح ENCRYPTION_KEY لاستعادة كلمات المرور.")
     async with core.pool.acquire() as conn:
         await system.audit(conn, actor(cb.from_user.id), "backup.create", "backup", path.name)

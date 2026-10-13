@@ -176,9 +176,8 @@ async def raise_alert(core: Core, level: str, kind: str, message: str, entity: s
     except Exception:  # alerts must never break the main flow
         log.exception("failed to store alert")
     if notify and core.messenger:
-        icon = {"error": "🚨", "warning": "⚠️"}.get(level, "ℹ️")
         try:
-            await core.messenger.notify_admins(f"{icon} {message}", perm=perm)
+            await core.messenger.notify_admins(message, perm=perm)
         except Exception:
             log.exception("failed to notify admins")
 
