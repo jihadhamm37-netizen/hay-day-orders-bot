@@ -14,7 +14,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InputMediaPhoto, 
 from ..core import Core, StoreError, fmt
 from ..i18n import err, t
 from ..services import catalog, deposits, orders, system, wallet
-from .ui import (MENU, btn, copy_btn, credentials_batch_messages, credentials_kb, credentials_text, deposit_line, dt, e, kb, lang_kb,
+from .ui import (MENU, specs, btn, copy_btn, credentials_batch_messages, credentials_kb, credentials_text, deposit_line, dt, e, kb, lang_kb,
                  main_menu, menu_labels, order_line, tx_line, type_card, url_btn)
 
 log = logging.getLogger(__name__)
@@ -154,7 +154,7 @@ async def _types_view(core: Core, lang: str, filters: dict | None = None):
     for tp in types:
         if tp["available"] > 0:
             price = fmt(tp["min_price"]) if tp["min_price"] == tp["max_price"] else f"{fmt(tp['min_price'])}+"
-            label = f"LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • {price} USDT ({tp['available']})"
+            label = f"LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • T{tp.get('tools') or 0} • {price} USDT ({tp['available']})"
             rows.append([btn(label, f"c:t:{tp['id']}", "success")])
         else:
             rows.append([btn(f"LVL {tp['lvl']} • {tp['barn']}/{tp['silo']} • {t(lang, 'out')}", f"c:t:{tp['id']}")])
@@ -299,7 +299,7 @@ async def _prepare_and_confirm(message: Message, cb: CallbackQuery | None, core:
         return
     snap = o["type_snapshot"]
     bal = Decimal(db_user["balance"])
-    text = t(lang, "confirm", name=e(snap["name"]), lvl=snap["lvl"], barn=f"{snap['barn']:,}", silo=f"{snap['silo']:,}",
+    text = t(lang, "confirm", name=e(snap["name"]), specs=specs(snap, lang),
              qty=qty, price=fmt(o["price"]), total=fmt(o["total"]), balance=fmt(bal), after=fmt(bal - o["total"]),
              ref=o["batch_ref"], ttl=orders.PENDING_TTL_MIN)
     await out(text, kb([btn(t(lang, "btn_confirm", total=fmt(o["total"])), f"c:bc:{o['id']}", "success")],
@@ -541,8 +541,8 @@ async def order_detail(cb: CallbackQuery, core: Core, lang: str):
         await cb.answer(t(lang, "order_missing"), show_alert=True)
         return
     snap = o["type_snapshot"]
-    text = t(lang, "order_card", ref=o["ref"], name=e(snap["name"]), lvl=snap["lvl"], barn=snap["barn"],
-             silo=snap["silo"], price=fmt(o["price"]), status=t(lang, "st_" + o["status"]), date=dt(o["created_at"]))
+    text = t(lang, "order_card", ref=o["ref"], name=e(snap["name"]), specs=specs(snap, lang),
+             price=fmt(o["price"]), status=t(lang, "st_" + o["status"]), date=dt(o["created_at"]))
     if o["status"] == "completed":
         text += "\n" + t(lang, "delivered_at", date=dt(o["delivered_at"]))
     if o["status"] in ("cancelled", "needs_review") and o["admin_note"]:

@@ -89,16 +89,26 @@ def dt(value: datetime | None) -> str:
 
 
 def type_line(tp: dict) -> str:
-    return f"LVL {tp['lvl']} • Barn {tp['barn']} • Silo {tp['silo']}"
+    return f"LVL {tp['lvl']} • Barn {tp['barn']} • Silo {tp['silo']} • Tools {tp.get('tools') or 0}"
+
+
+def specs(tp: dict, lang: str = "ar") -> str:
+    """Farm details in the standard post format:
+    المستوى: 100 / المخزن (Barn): 4000 / الصومعة (Silo): 1000 / الأدوات: 4000 (أدوات أرض)"""
+    return "\n".join([
+        f"{t(lang, 'card_level')}: {tp['lvl']}",
+        f"{t(lang, 'card_barn')}: {tp['barn']}",
+        f"{t(lang, 'card_silo')}: {tp['silo']}",
+        t(lang, "card_tools", n=tp.get("tools") or 0),
+    ])
 
 
 def type_card(tp: dict, tiers: list[dict] | None = None, lang: str = "ar") -> str:
     lines = [
         f"<b>{e(tp['name'])}</b>",
         "",
-        f"{t(lang, 'card_level')}: <b>{tp['lvl']}</b>",
-        f"{t(lang, 'card_barn')}: <b>{tp['barn']:,}</b>",
-        f"{t(lang, 'card_silo')}: <b>{tp['silo']:,}</b>",
+        specs(tp, lang),
+        "",
         f"{t(lang, 'card_price')}: <b>{fmt(tp['price'])} USDT</b>",
         f"{t(lang, 'card_stock')}: <b>{tp['available']}</b>",
     ]
@@ -113,7 +123,7 @@ def credentials_text(order: dict, login: str, password: str, lang: str = "ar") -
     snap = order["type_snapshot"]
     part = order.get("part")
     return t(lang, "creds", part=f" ({part[0]}/{part[1]})" if part else "", ref=e(order["ref"]), name=e(snap["name"]),
-             lvl=snap["lvl"], barn=snap["barn"], silo=snap["silo"], price=fmt(order["price"]),
+             specs=specs(snap, lang), price=fmt(order["price"]),
              login=e(login), password=e(password))
 
 
@@ -186,8 +196,8 @@ def credentials_batch_messages(items: list[tuple[dict, str, str]], lang: str = "
     for i, ch in enumerate(chunks):
         block = "<pre>" + e("\n".join(ch)) + "</pre>"
         if i == 0:
-            head = t(lang, "creds_batch", n=n, ref=e(ref), name=e(snap["name"]), lvl=snap["lvl"], barn=snap["barn"],
-                     silo=snap["silo"], total=fmt(total))
+            head = t(lang, "creds_batch", n=n, ref=e(ref), name=e(snap["name"]),
+                     specs=specs(snap, lang), total=fmt(total))
         else:
             head = t(lang, "creds_batch_more", a=start, b=start + len(ch) - 1, n=n)
         text = f"{head}\n\n{block}" + (f"\n\n{t(lang, 'creds_safe')}" if i == len(chunks) - 1 else "")

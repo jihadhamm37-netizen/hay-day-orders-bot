@@ -296,18 +296,18 @@
   ROUTES.types = async () => {
     setTitle("أنواع المزارع والمخزون");
     const f = { lvl: h("input", { type: "text", placeholder: "LVL (مثال: >=70)", dir: "ltr" }), barn: h("input", { type: "text", placeholder: "Barn", dir: "ltr" }),
-      silo: h("input", { type: "text", placeholder: "Silo", dir: "ltr" }), price: h("input", { type: "text", placeholder: "السعر (مثال: <=15)", dir: "ltr" }) };
+      silo: h("input", { type: "text", placeholder: "Silo", dir: "ltr" }), tools: h("input", { type: "text", placeholder: "Tools (أدوات)", dir: "ltr" }), price: h("input", { type: "text", placeholder: "السعر (مثال: <=15)", dir: "ltr" }) };
     const body = h("div");
     const load = async () => {
-      const items = await GET("/types" + q({ lvl: f.lvl.value.trim(), barn: f.barn.value.trim(), silo: f.silo.value.trim(), price: f.price.value.trim() }));
+      const items = await GET("/types" + q({ lvl: f.lvl.value.trim(), barn: f.barn.value.trim(), silo: f.silo.value.trim(), tools: f.tools.value.trim(), price: f.price.value.trim() }));
       const tools = (t) => h("td", { onclick: (ev) => ev.stopPropagation() }, h("div", { class: "btn-row", style: "flex-wrap:nowrap" },
         h("a", { class: "btn sm", href: "#/type/" + t.id, title: "فتح وإضافة حسابات" }, "فتح"),
         can("catalog") ? h("button", { class: "btn sm", onclick: () => typeForm(t) }, "تعديل") : null,
         can("catalog") ? h("button", { class: "btn sm", onclick: async () => { await run(() => api("PATCH", "/types/" + t.id, { is_active: !t.is_active }), t.is_active ? "تم إيقاف البيع" : "تم تفعيل البيع"); load(); } }, t.is_active ? "إيقاف" : "تفعيل") : null,
         can("catalog") ? h("button", { class: "btn sm danger", onclick: () => deleteType(t, load) }, "حذف") : null));
-      body.replaceChildren(table(["أدوات", "النوع", "LVL", "Barn", "Silo", "السعر", "متوفر", "محجوز", "مباع", "موقوف", "البيع"],
+      body.replaceChildren(table(["", "النوع", "LVL", "Barn", "Silo", "Tools", "السعر", "متوفر", "محجوز", "مباع", "موقوف", "البيع"],
         items.map((t) => h("tr", { class: "click", onclick: () => (location.hash = "#/type/" + t.id) },
-          tools(t), h("td", null, h("b", null, t.name)), h("td", { class: "num" }, t.lvl), h("td", { class: "num" }, t.barn), h("td", { class: "num" }, t.silo),
+          tools(t), h("td", null, h("b", null, t.name)), h("td", { class: "num" }, t.lvl), h("td", { class: "num" }, t.barn), h("td", { class: "num" }, t.silo), h("td", { class: "num" }, t.tools),
           h("td", null, usdt(t.price)), h("td", null, h("span", { class: "pill " + (t.available_raw ? "ok" : "danger") }, t.available_raw)),
           h("td", { class: "num" }, t.reserved), h("td", { class: "num" }, t.sold), h("td", { class: "num" }, t.disabled),
           h("td", null, t.is_active ? h("span", { class: "pill ok" }, "مفعّل") : h("span", { class: "pill" }, "موقوف")))), "لا توجد أنواع — أضف أول نوع"));
@@ -335,20 +335,21 @@
       lvl: h("input", { type: "number", min: 1, value: t?.lvl ?? "", required: true, dir: "ltr" }),
       barn: h("input", { type: "number", min: 0, value: t?.barn ?? "", required: true, dir: "ltr" }),
       silo: h("input", { type: "number", min: 0, value: t?.silo ?? "", required: true, dir: "ltr" }),
+      tools: h("input", { type: "number", min: 0, value: t?.tools ?? 0, dir: "ltr" }),
       price: h("input", { type: "text", inputmode: "decimal", value: t?.price ?? "", required: true, dir: "ltr" }),
       sort_order: h("input", { type: "number", value: t?.sort_order ?? 0, dir: "ltr" }),
       description: h("textarea", { style: "min-height:70px" }), is_active: h("input", { type: "checkbox", checked: t ? t.is_active : true }),
     };
     i.description.value = t?.description || "";
     const form = h("form", null, field("الاسم", i.name), h("div", { class: "form-grid" }, field("LVL — المستوى", i.lvl), field("Barn — المخزن", i.barn),
-      field("Silo — الصومعة", i.silo), field("السعر USDT", i.price), field("ترتيب العرض", i.sort_order)),
+      field("Silo — الصومعة", i.silo), field("Tools — أدوات أرض", i.tools), field("السعر USDT", i.price), field("ترتيب العرض", i.sort_order)),
       field("وصف يظهر للزبون (اختياري)", i.description), h("label", { class: "switch f" }, i.is_active, "متاح للبيع"),
       t ? h("p", { class: "small muted" }, "تغيير سعر النوع يطبق على كل حساباته عدا ما له سعر خاص.") : null,
       h("button", { class: "btn primary", type: "submit" }, t ? "حفظ التعديلات" : "إنشاء النوع"));
     const m = modal(t ? "تعديل النوع" : "نوع مزرعة جديد", form);
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const body = { name: i.name.value, lvl: i.lvl.value, barn: i.barn.value, silo: i.silo.value, price: i.price.value,
+      const body = { name: i.name.value, lvl: i.lvl.value, barn: i.barn.value, silo: i.silo.value, tools: i.tools.value, price: i.price.value,
         sort_order: i.sort_order.value, description: i.description.value, is_active: i.is_active.checked };
       const r = await run(() => t ? api("PATCH", "/types/" + t.id, body) : POST("/types", body), "تم الحفظ");
       m.close();
@@ -401,7 +402,7 @@
         can("catalog") ? h("button", { class: "btn sm", onclick: () => typeForm(t) }, "✏️ تعديل البيانات والسعر") : null,
         can("catalog") ? h("button", { class: "btn sm", onclick: async () => { await run(() => api("PATCH", "/types/" + id, { is_active: !t.is_active }), t.is_active ? "تم إيقاف البيع" : "تم تفعيل البيع"); route(); } }, t.is_active ? "⏸ إيقاف البيع" : "▶️ تفعيل البيع") : null,
         can("catalog") ? h("button", { class: "btn sm danger", onclick: () => deleteType(t, () => { location.hash = "#/types"; }) }, "حذف النوع") : null),
-      h("div", { class: "grid kpis" }, kpi("LVL", t.lvl), kpi("Barn / Silo", `${t.barn} / ${t.silo}`), kpi("السعر", money(t.price), "USDT"),
+      h("div", { class: "grid kpis" }, kpi("LVL", t.lvl), kpi("Barn / Silo", `${t.barn} / ${t.silo}`), kpi("Tools — أدوات أرض", t.tools), kpi("السعر", money(t.price), "USDT"),
         kpi("متوفر", t.available_raw, "أسعار: " + tierText, t.available_raw ? "" : "danger"), kpi("مباع", t.sold), kpi("الحالة", t.is_active ? "مفعّل" : "موقوف")),
       photoCard("صورة المزرعة", "تظهر للزبون عند فتح هذا النوع في البوت، وتُرسل مع بيانات الدخول إذا لم يكن للحساب صورة خاصة.",
         `/api/types/${id}/photo`, !!t.photo_file_id, (fd) => api("POST", `/types/${id}/photo`, fd, true), () => api("DELETE", `/types/${id}/photo`)),

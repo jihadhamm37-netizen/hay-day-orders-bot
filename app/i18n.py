@@ -27,7 +27,7 @@ T: dict[str, dict[str, str]] = {
     "no_types": {"ar": "لا توجد مزارع معروضة حالياً، تابعنا قريباً ", "en": "No farms available right now — check back soon "},
     "no_match": {"ar": "لا توجد مزارع مطابقة حالياً.", "en": "No farms match your filter."},
     "out": {"ar": "غير متوفر", "en": "Out of stock"},
-    "btn_filter": {"ar": "تصفية حسب LVL / Barn / Silo / السعر", "en": "Filter by LVL / Barn / Silo / price"},
+    "btn_filter": {"ar": "تصفية حسب LVL / Barn / Silo / Tools / السعر", "en": "Filter by LVL / Barn / Silo / Tools / price"},
     "btn_all_types": {"ar": "كل الأنواع", "en": "All types"},
     "filter_help": {"ar": "اكتب شروط البحث، أمثلة:\n<code>lvl 70</code>\n<code>lvl&gt;=60 price&lt;=15</code>\n"
                           "<code>barn&gt;=4000 silo&gt;=3000</code>\n\nأو /cancel للإلغاء.",
@@ -36,9 +36,10 @@ T: dict[str, dict[str, str]] = {
     "filter_bad": {"ar": "لم أفهم الشروط. مثال: <code>lvl&gt;=70 price&lt;=12</code>",
                    "en": "I couldn't read that. Example: <code>lvl&gt;=70 price&lt;=12</code>"},
     "type_unavailable": {"ar": "هذا النوع غير متاح.", "en": "This farm type is not available."},
-    "card_level": {"ar": "المستوى (LVL)", "en": "Level (LVL)"},
-    "card_barn": {"ar": "سعة المخزن (Barn)", "en": "Barn capacity"},
-    "card_silo": {"ar": "سعة الصومعة (Silo)", "en": "Silo capacity"},
+    "card_level": {"ar": "المستوى", "en": "Level"},
+    "card_barn": {"ar": "المخزن (Barn)", "en": "Barn"},
+    "card_silo": {"ar": "الصومعة (Silo)", "en": "Silo"},
+    "card_tools": {"ar": "الأدوات: {n} (أدوات أرض)", "en": "Tools: {n} (land tools)"},
     "card_price": {"ar": "السعر", "en": "Price"},
     "card_stock": {"ar": "المتوفر", "en": "In stock"},
     "card_tiers": {"ar": "الأسعار المتاحة:", "en": "Available prices:"},
@@ -55,11 +56,11 @@ T: dict[str, dict[str, str]] = {
     "qty_type": {"ar": "اكتب العدد المطلوب (من 1 إلى {max}):", "en": "Type the quantity (1 to {max}):"},
     "qty_bad": {"ar": "العدد يجب أن يكون رقماً بين 1 و {max}.", "en": "Quantity must be a number from 1 to {max}."},
     # ------------------------------------------------------------- confirm
-    "confirm": {"ar": "<b>تأكيد الطلب</b>\n\nالنوع: <b>{name}</b>\nLVL {lvl} • Barn {barn} • Silo {silo}\n\n"
+    "confirm": {"ar": "<b>تأكيد الطلب</b>\n\nالنوع: <b>{name}</b>\n{specs}\n\n"
                       "العدد: <b>{qty}</b>\nسعر المزرعة: {price} USDT\n<b>الإجمالي: {total} USDT</b>\n\n"
                       "رصيدك الحالي: {balance} USDT\nالرصيد بعد الشراء: {after} USDT\n\nرقم الطلب: <code>{ref}</code>\n"
                       "صالح لمدة {ttl} دقيقة.",
-                "en": "<b>Confirm your order</b>\n\nType: <b>{name}</b>\nLVL {lvl} • Barn {barn} • Silo {silo}\n\n"
+                "en": "<b>Confirm your order</b>\n\nType: <b>{name}</b>\n{specs}\n\n"
                       "Quantity: <b>{qty}</b>\nPrice per farm: {price} USDT\n<b>Total: {total} USDT</b>\n\n"
                       "Current balance: {balance} USDT\nBalance after purchase: {after} USDT\n\nOrder: <code>{ref}</code>\n"
                       "Valid for {ttl} minutes."},
@@ -82,18 +83,18 @@ T: dict[str, dict[str, str]] = {
     "btn_my_orders": {"ar": "طلباتي", "en": "My orders"},
     # --------------------------------------------------------- credentials
     "creds": {"ar": "<b>تم شراء المزرعة بنجاح</b>{part}\n\nرقم الطلب: <code>{ref}</code>\n"
-                    "النوع: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\nالسعر: {price} USDT\n\n"
+                    "النوع: {name}\n{specs}\nالسعر: {price} USDT\n\n"
                     "<b>ID:</b> <code>{login}</code>\n<b>Password:</b> <code>{password}</code>\n\n"
                     "احفظ البيانات في مكان آمن ولا تشاركها مع أحد.",
               "en": "<b>Your farm is ready</b>{part}\n\nOrder: <code>{ref}</code>\n"
-                    "Type: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\nPrice: {price} USDT\n\n"
+                    "Type: {name}\n{specs}\nPrice: {price} USDT\n\n"
                     "<b>ID:</b> <code>{login}</code>\n<b>Password:</b> <code>{password}</code>\n\n"
                     "Keep these details safe and never share them."},
     "creds_batch": {"ar": "<b>تم شراء {n} مزارع بنجاح</b>\n\nرقم الطلب: <code>{ref}</code>\n"
-                          "النوع: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\nالإجمالي: {total} USDT\n\n"
+                          "النوع: {name}\n{specs}\nالإجمالي: {total} USDT\n\n"
                           "اضغط على القائمة لنسخها كاملة ",
                     "en": "<b>{n} farms purchased</b>\n\nOrder: <code>{ref}</code>\n"
-                          "Type: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\nTotal: {total} USDT\n\n"
+                          "Type: {name}\n{specs}\nTotal: {total} USDT\n\n"
                           "Tap the list to copy it all "},
     "creds_batch_more": {"ar": "تكملة القائمة ({a}–{b} من {n}):", "en": "List continued ({a}–{b} of {n}):"},
     "creds_safe": {"ar": "احفظ البيانات في مكان آمن ولا تشاركها مع أحد.", "en": "Keep these details safe and never share them."},
@@ -136,9 +137,9 @@ T: dict[str, dict[str, str]] = {
     "orders_head": {"ar": "<b>طلباتي</b>", "en": "<b>My orders</b>"},
     "no_orders": {"ar": "لا توجد طلبات شراء بعد.", "en": "No orders yet."},
     "last_deposits": {"ar": "<b>آخر طلبات الشحن:</b>", "en": "<b>Recent top-ups:</b>"},
-    "order_card": {"ar": "<b>الطلب</b> <code>{ref}</code>\n\nالنوع: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\n"
+    "order_card": {"ar": "<b>الطلب</b> <code>{ref}</code>\n\nالنوع: {name}\n{specs}\n"
                          "السعر: {price} USDT\nالحالة: <b>{status}</b>\nالتاريخ: {date}",
-                   "en": "<b>Order</b> <code>{ref}</code>\n\nType: {name} — LVL {lvl} • Barn {barn} • Silo {silo}\n"
+                   "en": "<b>Order</b> <code>{ref}</code>\n\nType: {name}\n{specs}\n"
                          "Price: {price} USDT\nStatus: <b>{status}</b>\nDate: {date}"},
     "delivered_at": {"ar": "تم التسليم: {date}", "en": "Delivered: {date}"},
     "note": {"ar": "ملاحظة: {note}", "en": "Note: {note}"},

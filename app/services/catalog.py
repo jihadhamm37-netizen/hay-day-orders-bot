@@ -33,8 +33,9 @@ FROM farm_types t LEFT JOIN farm_accounts a ON a.type_id = t.id
 
 
 # --------------------------------------------------------------- filtering
-_FILTER_RE = re.compile(r"(lvl|level|barn|silo|price|مستوى|مخزن|صومعة|سعر)\s*(>=|<=|=|>|<|:)?\s*([\d.]+)", re.I)
-_ALIASES = {"level": "lvl", "مستوى": "lvl", "مخزن": "barn", "صومعة": "silo", "سعر": "price"}
+_FILTER_RE = re.compile(r"(lvl|level|barn|silo|tools|tool|price|مستوى|مخزن|صومعة|أدوات|ادوات|سعر)\s*(>=|<=|=|>|<|:)?\s*([\d.]+)", re.I)
+_ALIASES = {"level": "lvl", "مستوى": "lvl", "مخزن": "barn", "صومعة": "silo", "سعر": "price", "tool": "tools",
+            "أدوات": "tools", "ادوات": "tools"}
 
 
 def parse_filter(text: str) -> dict[str, tuple[str, Decimal]]:
@@ -54,7 +55,7 @@ async def list_types(core: Core, *, include_inactive: bool = True, filters: dict
     if not include_inactive or for_customers:
         q += " AND t.is_active"
     for f, (op, val) in (filters or {}).items():
-        if f not in ("lvl", "barn", "silo", "price") or op not in ("=", ">", "<", ">=", "<="):
+        if f not in ("lvl", "barn", "silo", "tools", "price") or op not in ("=", ">", "<", ">=", "<="):
             continue
         args.append(val)
         q += f" AND t.{f} {op} ${len(args)}"
@@ -71,7 +72,11 @@ async def get_type(core: Core, type_id: int) -> dict | None:
 
 def _type_fields(data: dict, partial: bool) -> dict:
     out: dict[str, Any] = {}
-    for f in ("lvl", "barn", "silo"):
+    if data.get("tools") in (None, "") and not partial:
+        data = {**data, "tools": 0}
+    for f in ("lvl", "barn", "silo", "tools"):
+        if f == "tools" and partial and (f not in data or data[f] in (None, "")):
+            continue
         if f in data and data[f] is not None and data[f] != "":
             try:
                 v = int(str(data[f]).strip())
@@ -105,9 +110,9 @@ async def create_type(core: Core, actor: str, data: dict, ip: str | None = None)
     name = f.get("name") or f"LVL {f['lvl']}"
     async with core.pool.acquire() as conn, conn.transaction():
         r = await conn.fetchrow(
-            "INSERT INTO farm_types(name, lvl, barn, silo, price, description, sort_order, is_active) "
-            "VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
-            name, f["lvl"], f["barn"], f["silo"], f["price"], f.get("description"),
+            "INSERT INTO farm_types(name, lvl, barn, silo, tools, price, description, sort_order, is_active) "
+            "VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
+            name, f["lvl"], f["barn"], f["silo"], f.get("tools", 0), f["price"], f.get("description"),
             f.get("sort_order", 0), f.get("is_active", True))
         await audit(conn, actor, "type.create", "farm_type", r["id"], dict(r), ip)
     return dict(r)

@@ -59,7 +59,7 @@ async def prepare(core: Core, user_id: int, type_id: int, price: Any, qty: int =
         raise StoreError("insufficient_funds",
                          f"رصيدك ({fmt(user['balance'])} USDT) لا يكفي. الإجمالي {fmt(total)} USDT.",
                          balance=fmt(user["balance"]), total=fmt(total))
-    snapshot = {"name": t["name"], "lvl": t["lvl"], "barn": t["barn"], "silo": t["silo"]}
+    snapshot = {"name": t["name"], "lvl": t["lvl"], "barn": t["barn"], "silo": t["silo"], "tools": t["tools"]}
     batch = uuid.uuid4().hex
     base = make_ref("ORD")
     created = []

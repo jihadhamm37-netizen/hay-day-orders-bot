@@ -271,3 +271,18 @@ async def test_type_photo_shown_and_sent_with_credentials(env):
     await press(dp, bot, 47, confirm.callback_data)
     cred = [p for p in s.of(SendPhoto) if p.chat_id == 47][-1]
     assert cred.photo == "PHOTO_TYPE_1" and "Password" in cred.caption
+
+
+async def test_farm_card_shows_tools_in_post_format(env):
+    core, bot, dp, s = env
+    await send_text(dp, bot, 999, "/admin")
+    await press(dp, bot, 999, "a:tnew")
+    await send_text(dp, bot, 999, "100 4000 1000 4000 10")
+    tp = await core.pool.fetchrow("SELECT * FROM farm_types")
+    assert (tp["lvl"], tp["barn"], tp["silo"], tp["tools"], str(tp["price"])) == (100, 4000, 1000, 4000, "10.00")
+    from app.services import catalog
+    await catalog.add_accounts(core, "test", tp["id"], [{"line": 1, "login": "a", "password": "b"}])
+    await make_user(core, 48, "0")
+    await press(dp, bot, 48, f"c:t:{tp['id']}")
+    card = s.of(EditMessageText)[-1].text
+    assert "المستوى: 100\nالمخزن (Barn): 4000\nالصومعة (Silo): 1000\nالأدوات: 4000 (أدوات أرض)" in card

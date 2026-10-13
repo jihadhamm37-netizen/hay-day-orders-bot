@@ -179,10 +179,10 @@ def create_app(core: Core, bot: Bot | None = None) -> FastAPI:
     # ------------------------------------------------------------- types
     @api.get("/types")
     async def types(lvl: str | None = None, barn: str | None = None, silo: str | None = None,
-                    price: str | None = None, q: str | None = None,
+                    tools: str | None = None, price: str | None = None, q: str | None = None,
                     _=Depends(require("view")), core: Core = Depends(get_core)):
         flt = catalog.parse_filter(q or "")
-        for name, val in (("lvl", lvl), ("barn", barn), ("silo", silo), ("price", price)):
+        for name, val in (("lvl", lvl), ("barn", barn), ("silo", silo), ("tools", tools), ("price", price)):
             if val:
                 flt.update(catalog.parse_filter(f"{name}{val if val[0] in '<>=' else '=' + val}"))
         return ok(await catalog.list_types(core, filters=flt))

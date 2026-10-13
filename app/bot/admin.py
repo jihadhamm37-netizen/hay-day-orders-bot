@@ -220,18 +220,29 @@ async def type_new(cb: CallbackQuery, state: FSMContext, role: str):
     await state.set_state(A.new_type)
     await cb.message.answer(
         "<b>نوع مزرعة جديد</b>\nأرسل البيانات بهذا الترتيب في سطر واحد:\n"
-        "<code>LVL Barn Silo Price [الاسم]</code>\n\nمثال:\n<code>70 4000 3000 10</code>\n"
-        "<code>85 5500 5000 18.5 مزرعة VIP</code>\n\n/cancel للإلغاء")
+        "<code>LVL Barn Silo Tools Price [الاسم]</code>\n\nمثال:\n<code>100 4000 1000 4000 10</code>\n"
+        "<code>85 5500 5000 3000 18.5 مزرعة VIP</code>\n\n/cancel للإلغاء")
     await cb.answer()
 
 
 def _parse_type_line(text: str) -> dict:
+    """'LVL Barn Silo Tools Price [name]' — Tools may be omitted: 'LVL Barn Silo Price [name]'."""
     parts = text.split()
-    if len(parts) < 4:
-        raise StoreError("bad_input", "الصيغة: LVL Barn Silo Price [الاسم]")
-    data = {"lvl": parts[0], "barn": parts[1], "silo": parts[2], "price": parts[3]}
-    if len(parts) > 4:
-        data["name"] = " ".join(parts[4:])
+    nums = []
+    for p in parts:
+        if len(nums) < 5 and p.replace(".", "", 1).replace(",", "", 1).isdigit():
+            nums.append(p)
+        else:
+            break
+    if len(nums) < 4:
+        raise StoreError("bad_input", "الصيغة: LVL Barn Silo Tools Price [الاسم]")
+    data = {"lvl": nums[0], "barn": nums[1], "silo": nums[2]}
+    if len(nums) == 5:
+        data.update(tools=nums[3], price=nums[4])
+    else:
+        data.update(tools=0, price=nums[3])
+    if len(parts) > len(nums):
+        data["name"] = " ".join(parts[len(nums):])
     return data
 
 
@@ -355,7 +366,7 @@ async def type_edit(cb: CallbackQuery, state: FSMContext, role: str):
         return
     await state.set_state(A.edit_type)
     await state.update_data(type_id=int(cb.data.split(":")[2]))
-    await cb.message.answer("أرسل البيانات الجديدة:\n<code>LVL Barn Silo Price [الاسم]</code>")
+    await cb.message.answer("أرسل البيانات الجديدة:\n<code>LVL Barn Silo Tools Price [الاسم]</code>\nمثال: <code>100 4000 1000 4000 10</code>")
     await cb.answer()
 
 
