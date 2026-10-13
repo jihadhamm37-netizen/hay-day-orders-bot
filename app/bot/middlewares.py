@@ -43,6 +43,17 @@ class UserMiddleware(BaseMiddleware):
             elif isinstance(event, Message):
                 await event.answer(t(db_user["lang"], "banned"))
             return None
+        if not db_user.get("lang_chosen") and not role:
+            is_start = isinstance(event, Message) and (event.text or "").split(" ")[0] in ("/start", "/claim")
+            is_lang = isinstance(event, CallbackQuery) and (event.data or "").startswith("c:lang:")
+            if not (is_start or is_lang):
+                from .ui import lang_kb
+                if isinstance(event, CallbackQuery):
+                    await event.answer()
+                    await event.message.answer("اختر اللغة / Choose your language", reply_markup=lang_kb())
+                elif isinstance(event, Message):
+                    await event.answer("اختر اللغة / Choose your language", reply_markup=lang_kb())
+                return None
         data["core"] = self.core
         data["db_user"] = db_user
         data["role"] = role

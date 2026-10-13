@@ -95,7 +95,6 @@ async def test_buy_flow_delivers_credentials_with_copy_buttons(env):
     await send_text(dp, bot, 42, "/start")
     home = s.of(SendPhoto)[-1]                          # banner with the main reply keyboard
     assert home.reply_markup.keyboard and "25.00 USDT" in home.caption
-    assert any(b.callback_data == "c:lang:en" for b in buttons(s.of(SendMessage)[-1]))  # first visit: language picker
     await send_text(dp, bot, 42, BTN_BUY)
     assert any(b.callback_data == f"c:t:{t['id']}" for b in buttons(s.of(SendMessage)[-1]))
     await press(dp, bot, 42, f"c:t:{t['id']}")
@@ -131,6 +130,7 @@ async def test_blocked_user_order_goes_to_review(env):
 
 async def test_topup_flow_and_admin_approval_in_telegram(env):
     core, bot, dp, s = env
+    await make_user(core, 50)
     await send_text(dp, bot, 50, "/start")
     await send_text(dp, bot, 50, BTN_TOPUP)
     await send_text(dp, bot, 50, "20")
@@ -243,8 +243,9 @@ async def test_english_language(env):
     t = await make_type(core, 1, price="10")
     await make_user(core, 46, "10")
     await press(dp, bot, 46, "c:lang:en")
-    assert s.of(SendMessage)[-1].text == tr("en", "lang_set")
-    kbd = s.of(SendMessage)[-1].reply_markup.keyboard
+    home = s.of(SendPhoto)[-1]
+    assert "Balance" in home.caption
+    kbd = home.reply_markup.keyboard
     assert kbd[0][0].text.endswith("Buy farms") and kbd[0][0].style == "success"
     await send_text(dp, bot, 46, "🛒 Buy farms")
     assert "Available farms" in s.of(SendMessage)[-1].text
@@ -287,3 +288,18 @@ async def test_farm_card_shows_tools_in_post_format(env):
     await press(dp, bot, 48, f"c:t:{tp['id']}")
     card = s.of(SendPhoto)[-1].caption.split("\n\n")[0]
     assert card == "المستوى: 100\nالمخزن: 4000\nالصومعة: 1000\nالأدوات: 4000\nالسعر: 10.00 USDT\nالمتوفر: 1"
+
+
+async def test_first_visit_chooses_language_before_store(env):
+    core, bot, dp, s = env
+    await send_text(dp, bot, 70, "/start")
+    first = s.of(SendMessage)[-1]
+    assert [b.callback_data for b in buttons(first)] == ["c:lang:ar", "c:lang:en"]
+    assert not s.of(SendPhoto)                                   # store not shown yet
+    await send_text(dp, bot, 70, BTN_BUY)                         # anything else → picker again
+    assert [b.callback_data for b in buttons(s.of(SendMessage)[-1])] == ["c:lang:ar", "c:lang:en"]
+    await press(dp, bot, 70, "c:lang:en")
+    home = s.of(SendPhoto)[-1]
+    assert "Balance" in home.caption and home.reply_markup.keyboard[0][0].text.endswith("Buy farms")
+    await send_text(dp, bot, 70, "/start")                        # next time straight to the store
+    assert "Balance" in s.of(SendPhoto)[-1].caption

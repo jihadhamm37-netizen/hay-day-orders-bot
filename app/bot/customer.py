@@ -157,9 +157,11 @@ async def send_home(message: Message, core: Core, lang: str, is_admin: bool, use
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext, core: Core, role: str | None, lang: str, db_user: dict):
     await state.clear()
-    await send_home(message, core, lang, bool(role), message.from_user.id)
     if not db_user.get("lang_chosen"):
-        await message.answer(t(lang, "choose_lang"), reply_markup=lang_kb())
+        # first visit: only the language picker; the store opens in the chosen language
+        await message.answer(LANG_PROMPT, reply_markup=lang_kb())
+        return
+    await send_home(message, core, lang, bool(role), message.from_user.id)
 
 
 @router.message(F.text.in_(menu_labels("lang")))
@@ -178,7 +180,7 @@ async def language_set(cb: CallbackQuery, core: Core, role: str | None):
         await cb.message.delete()
     except Exception:
         pass
-    await send_menu(cb.message, core, t(new, "lang_set"), new, bool(role))
+    await send_home(cb.message, core, new, bool(role), cb.from_user.id)
 
 
 @router.message(Command("claim"))
@@ -214,6 +216,7 @@ async def noop(cb: CallbackQuery):
 
 # ---------------------------------------------------------------- browse
 PAGE_SIZE = 8
+LANG_PROMPT = "اختر اللغة / Choose your language"
 
 
 async def _types_view(core: Core, lang: str, filters: dict | None = None, page: int = 0):

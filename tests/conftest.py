@@ -67,6 +67,7 @@ async def core():
 async def make_user(core: Core, uid: int, balance: str = "0") -> None:
     from app.services import wallet
     await wallet.touch_user(core, uid, f"user{uid}", f"User {uid}")
+    await core.pool.execute("UPDATE users SET lang_chosen=TRUE WHERE id=$1", uid)
     if balance != "0":
         await wallet.admin_adjust(core, "test", uid, balance, "رصيد اختبار")
 
