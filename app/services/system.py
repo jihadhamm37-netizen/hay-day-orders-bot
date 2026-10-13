@@ -24,6 +24,7 @@ SETTINGS_SCHEMA: dict[str, tuple[str, str]] = {
     "require_txid": ("طلب رقم عملية Binance مع الإثبات", "bool"),
     "auto_verify_enabled": ("التحقق الآلي عبر Binance API", "bool"),
     "max_quantity": ("أقصى عدد مزارع في الطلب الواحد", "int"),
+    "store_name": ("اسم المتجر على صور البوت (حروف إنجليزية)", "text"),
     "welcome_text_en": ("رسالة الترحيب (English)", "longtext"),
     "support_text_en": ("رسالة الدعم الفني (English)", "longtext"),
     "payment_instructions_en": ("تعليمات الدفع (English)", "longtext"),
@@ -95,6 +96,9 @@ def _normalize(key: str, value: Any) -> str:
         if v and (not v.isdigit() or len(v) > 30):
             raise StoreError("bad_setting", "معرّف الأيقونة يجب أن يكون أرقاماً (custom_emoji_id) أو فارغاً.")
         return v
+    if key == "store_name":
+        if not v or len(v) > 24 or not all(c.isascii() and (c.isalnum() or c in " &-.'") for c in v):
+            raise StoreError("bad_setting", "اسم المتجر: حروف وأرقام إنجليزية فقط (حتى 24 حرفاً).")
     if key == "binance_pay_id":
         if not v.isdigit() or not (4 <= len(v) <= 20):
             raise StoreError("bad_setting", "معرّف Binance Pay يجب أن يكون أرقاماً فقط.")

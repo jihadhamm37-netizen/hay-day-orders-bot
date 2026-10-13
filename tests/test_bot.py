@@ -93,14 +93,15 @@ async def test_buy_flow_delivers_credentials_with_copy_buttons(env):
     t = await make_type(core, 3, price="10")
     await make_user(core, 42, "25")
     await send_text(dp, bot, 42, "/start")
-    assert s.of(SendMessage)[-2].reply_markup.keyboard  # main reply keyboard
+    home = s.of(SendPhoto)[-1]                          # banner with the main reply keyboard
+    assert home.reply_markup.keyboard and "25.00 USDT" in home.caption
     assert any(b.callback_data == "c:lang:en" for b in buttons(s.of(SendMessage)[-1]))  # first visit: language picker
     await send_text(dp, bot, 42, BTN_BUY)
     assert any(b.callback_data == f"c:t:{t['id']}" for b in buttons(s.of(SendMessage)[-1]))
     await press(dp, bot, 42, f"c:t:{t['id']}")
-    tier_btn = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data and b.callback_data.startswith("c:bq:"))
-    await press(dp, bot, 42, tier_btn.callback_data)
-    qty_btns = [b.callback_data for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data and b.callback_data.startswith("c:bp:")]
+    detail = s.of(SendPhoto)[-1]                        # generated farm card + quantity buttons
+    assert "المستوى: 70" in detail.caption
+    qty_btns = [b.callback_data for b in buttons(detail) if b.callback_data and b.callback_data.startswith("c:bp:")]
     assert qty_btns[0].endswith(":1") and len(qty_btns) == 3   # only 3 in stock → 1, 2, 3
     await press(dp, bot, 42, qty_btns[0])
     confirm = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data and b.callback_data.startswith("c:bc:"))
@@ -203,7 +204,7 @@ async def test_buy_quantity_three_farms_one_confirmation(env):
     await press(dp, bot, 44, f"c:bq:{t['id']}:10.00")
     await press(dp, bot, 44, f"c:bp:{t['id']}:10.00:3")
     conf = s.of(EditMessageText)[-1]
-    assert "30.00" in conf.text and "<b>3</b>" in conf.text
+    assert "30.00 USDT</b>" in conf.text and "الكمية         3" in conf.text
     confirm = next(b for b in buttons(conf) if b.callback_data.startswith("c:bc:"))
     await press(dp, bot, 44, confirm.callback_data)
     await press(dp, bot, 44, confirm.callback_data)
@@ -246,12 +247,12 @@ async def test_english_language(env):
     kbd = s.of(SendMessage)[-1].reply_markup.keyboard
     assert kbd[0][0].text.endswith("Buy farms") and kbd[0][0].style == "success"
     await send_text(dp, bot, 46, "🛒 Buy farms")
-    assert "Choose a farm type" in s.of(SendMessage)[-1].text
+    assert "Available farms" in s.of(SendMessage)[-1].text
     await press(dp, bot, 46, f"c:bp:{t['id']}:10.00:1")
     confirm = next(b for b in buttons(s.of(EditMessageText)[-1]) if b.callback_data.startswith("c:bc:"))
     await press(dp, bot, 46, confirm.callback_data)
     creds = [m for m in s.of(SendMessage) if m.chat_id == 46 and "Password" in (m.text or "")][-1]
-    assert "Your farm is ready" in creds.text
+    assert "Farm login details" in creds.text
     assert any(b.text == "Copy ID" for b in buttons(creds))
     # English notification from a service
     await wallet.admin_adjust(core, "test", 46, "3", "bonus")
@@ -284,5 +285,5 @@ async def test_farm_card_shows_tools_in_post_format(env):
     await catalog.add_accounts(core, "test", tp["id"], [{"line": 1, "login": "a", "password": "b"}])
     await make_user(core, 48, "0")
     await press(dp, bot, 48, f"c:t:{tp['id']}")
-    card = s.of(EditMessageText)[-1].text
+    card = s.of(SendPhoto)[-1].caption.split("\n━")[0]
     assert card == "المستوى: 100\nالمخزن: 4000\nالصومعة: 1000\nالأدوات: 4000\nالسعر: 10.00 USDT\nالمتوفر: 1"

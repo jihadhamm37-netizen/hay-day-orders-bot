@@ -670,7 +670,7 @@
     const items = await GET("/settings");
     const inputs = {};
     const groups = { "الدفع عبر Binance Pay": ["binance_pay_id", "payment_instructions", "min_deposit", "max_deposit", "require_txid", "auto_verify_enabled"],
-      "رسائل البوت والدعم": ["welcome_text", "support_text", "support_username"],
+      "رسائل البوت والدعم": ["store_name", "welcome_text", "support_text", "support_username"],
       "النصوص باللغة الإنجليزية": ["welcome_text_en", "support_text_en", "payment_instructions_en"],
       "المخزون والشراء": ["hide_out_of_stock", "low_stock_threshold", "max_quantity"],
       "أيقونات أزرار القائمة (Custom Emoji ID)": ["icon_buy", "icon_wallet", "icon_topup", "icon_orders", "icon_support", "icon_lang"] };

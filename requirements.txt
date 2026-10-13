@@ -5,3 +5,4 @@ uvicorn[standard]>=0.30
 cryptography>=43
 PyJWT>=2.9
 python-multipart>=0.0.9
+Pillow>=10.4

@@ -1,6 +1,7 @@
 """Customer side: buy farms (with quantity), wallet, top-up via Binance Pay, orders, support, language."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from decimal import Decimal
 
@@ -9,11 +10,13 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InputMediaPhoto, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardMarkup, InputMediaPhoto, Message
 
 from ..core import Core, StoreError, fmt
 from ..i18n import err, t
 from ..services import catalog, deposits, orders, system, wallet
+from . import cards
+from .ui import LOCAL_TZ
 from .ui import (MENU, specs, type_button, btn, copy_btn, credentials_batch_messages, credentials_kb, credentials_text, deposit_line, dt, e, kb, lang_kb,
                  main_menu, menu_labels, order_line, tx_line, type_card, url_btn)
 
@@ -56,40 +59,105 @@ async def send_menu(message: Message, core: Core, text: str, lang: str, is_admin
         return await message.answer(text, reply_markup=main_menu(lang, is_admin, None), **kw)
 
 
-async def show(cb: CallbackQuery, text: str, markup: InlineKeyboardMarkup | None = None, photo: str | None = None):
-    """Replace the current screen, switching between photo and text messages as needed."""
+async def show(cb: CallbackQuery, text: str, markup: InlineKeyboardMarkup | None = None, photo=None):
+    """Replace the current screen, switching between photo and text messages as needed. Returns the message."""
     msg = cb.message
     try:
         if photo:
             if msg.photo:
-                await msg.edit_media(InputMediaPhoto(media=photo, caption=text), reply_markup=markup)
-                return
+                r = await msg.edit_media(InputMediaPhoto(media=photo, caption=text), reply_markup=markup)
+                return r if isinstance(r, Message) else msg
         elif msg.text is not None:
-            await msg.edit_text(text, reply_markup=markup)
-            return
+            r = await msg.edit_text(text, reply_markup=markup)
+            return r if isinstance(r, Message) else msg
     except TelegramBadRequest as ex:
         if "message is not modified" in str(ex):
-            return
+            return msg
     try:
         await msg.delete()
     except Exception:
         pass
     if photo:
         try:
-            await msg.answer_photo(photo, caption=text, reply_markup=markup)
-            return
+            return await msg.answer_photo(photo, caption=text, reply_markup=markup)
         except TelegramBadRequest:
             pass
-    await msg.answer(text, reply_markup=markup)
+    return await msg.answer(text, reply_markup=markup)
+
+
+# --------------------------------------------------------- generated images
+async def _store_name(core: Core) -> str:
+    return (await system.setting(core, "store_name", "HD FARM STORE")).strip() or "HD FARM STORE"
+
+
+async def farm_photo(core: Core, tp: dict):
+    """Owner's uploaded photo, else the generated card (cached as a Telegram file id)."""
+    if tp.get("photo_file_id"):
+        return tp["photo_file_id"], None
+    h = cards.card_hash(tp)
+    if tp.get("card_file_id") and tp.get("card_hash") == h:
+        return tp["card_file_id"], None
+    data = await asyncio.to_thread(cards.render_farm_card, tp, await _store_name(core))
+    return BufferedInputFile(data, f"farm-{tp['id']}.png"), h
+
+
+async def remember_card(core: Core, type_id: int, h: str | None, sent: Message | None) -> None:
+    if h and sent is not None and sent.photo:
+        await core.pool.execute("UPDATE farm_types SET card_file_id=$2, card_hash=$3 WHERE id=$1",
+                                type_id, sent.photo[-1].file_id, h)
+
+
+async def banner_photo(core: Core):
+    s = await system.get_settings(core)
+    name = (s.get("store_name") or "HD FARM STORE").strip()
+    h = cards.banner_hash(name)
+    if s.get("banner_file_id") and s.get("banner_hash") == h:
+        return s["banner_file_id"], None
+    data = await asyncio.to_thread(cards.render_banner, name)
+    return BufferedInputFile(data, "banner.png"), h
+
+
+async def remember_banner(core: Core, h: str | None, sent: Message | None) -> None:
+    if h and sent is not None and sent.photo:
+        await core.pool.execute(
+            "INSERT INTO settings(key, value) VALUES('banner_file_id',$1),('banner_hash',$2) "
+            "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", sent.photo[-1].file_id, h)
+        core._settings_cache = {}
+
+
+async def send_home(message: Message, core: Core, lang: str, is_admin: bool, user_id: int):
+    s = await system.get_settings(core)
+    welcome = s.get("welcome_text_en" if lang == "en" else "welcome_text") or s.get("welcome_text", "")
+    u = await wallet.get_user(core, user_id)
+    stock = await core.pool.fetchval(
+        "SELECT count(*) FROM farm_accounts a JOIN farm_types t ON t.id=a.type_id "
+        "WHERE a.status='available' AND t.is_active AND NOT t.is_deleted")
+    caption = t(lang, "home", store=e(s.get("store_name") or "HD FARM STORE"), welcome=e(welcome),
+                balance=fmt(u["balance"] if u else 0), stock=stock)
+    photo, h = await banner_photo(core)
+    icons = await menu_icons(core)
+    try:
+        sent = await message.answer_photo(photo, caption=caption, reply_markup=main_menu(lang, is_admin, icons))
+        await remember_banner(core, h, sent)
+        return sent
+    except TelegramBadRequest as ex:
+        if icons:
+            core.icons_broken = True
+            try:
+                sent = await message.answer_photo(photo, caption=caption, reply_markup=main_menu(lang, is_admin, None))
+                await remember_banner(core, h, sent)
+                return sent
+            except TelegramBadRequest:
+                pass
+        log.warning("home banner failed (%s), sending text", ex)
+    return await send_menu(message, core, caption, lang, is_admin)
 
 
 # ------------------------------------------------------------------ start
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext, core: Core, role: str | None, lang: str, db_user: dict):
     await state.clear()
-    s = await system.get_settings(core)
-    text = s.get("welcome_text_en" if lang == "en" else "welcome_text") or s.get("welcome_text", "")
-    await send_menu(message, core, e(text), lang, bool(role))
+    await send_home(message, core, lang, bool(role), message.from_user.id)
     if not db_user.get("lang_chosen"):
         await message.answer(t(lang, "choose_lang"), reply_markup=lang_kb())
 
@@ -145,22 +213,42 @@ async def noop(cb: CallbackQuery):
 
 
 # ---------------------------------------------------------------- browse
-async def _types_view(core: Core, lang: str, filters: dict | None = None):
+PAGE_SIZE = 8
+
+
+async def _types_view(core: Core, lang: str, filters: dict | None = None, page: int = 0):
     types = await catalog.list_types(core, for_customers=True, filters=filters)
     if not types:
         return (t(lang, "no_match") if filters else t(lang, "no_types")), kb(
             [] if not filters else [btn(t(lang, "btn_all_types"), "c:types")])
+    types.sort(key=lambda x: (x["available"] == 0, x["sort_order"], x["lvl"], x["price"]))
+    pages = max(1, (len(types) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(max(page, 0), pages - 1)
     rows = []
-    for tp in types:
+    for tp in types[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
         if tp["available"] > 0:
             price = fmt(tp["min_price"]) if tp["min_price"] == tp["max_price"] else f"{fmt(tp['min_price'])}+"
-            label = f"{type_button(tp)} • {price}$ ({tp['available']})"
-            rows.append([btn(label, f"c:t:{tp['id']}", "success")])
+            rows.append([btn(f"{type_button(tp)}  ·  {price}$  ·  {tp['available']}", f"c:t:{tp['id']}", "success")])
         else:
-            rows.append([btn(f"{type_button(tp)} • {t(lang, 'out')}", f"c:t:{tp['id']}")])
+            rows.append([btn(f"{type_button(tp)}  ·  {t(lang, 'out')}", f"c:t:{tp['id']}")])
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(btn(t(lang, "prev"), f"c:tp:{page - 1}"))
+        nav.append(btn(f"{page + 1} / {pages}", "noop"))
+        if page < pages - 1:
+            nav.append(btn(t(lang, "next"), f"c:tp:{page + 1}"))
+        rows.append(nav)
     if filters:
         rows.append([btn(t(lang, "btn_all_types"), "c:types")])
     return t(lang, "types_head"), kb(*rows)
+
+
+@router.callback_query(F.data.startswith("c:tp:"))
+async def types_page(cb: CallbackQuery, state: FSMContext, core: Core, lang: str):
+    text, markup = await _types_view(core, lang, page=int(cb.data.split(":")[2]))
+    await show(cb, text, markup)
+    await cb.answer()
 
 
 @router.message(F.text.in_(menu_labels("buy")))
@@ -196,8 +284,24 @@ async def filter_apply(message: Message, state: FSMContext, core: Core, lang: st
     await message.answer(text, reply_markup=markup)
 
 
+def _qty_rows(lang: str, type_id: int, price: Decimal, limit: int, balance) -> list:
+    choices = [q for q in QUICK_QTY if q <= limit]
+    rows, row = [], []
+    for q in choices:
+        row.append(btn(t(lang, "btn_qty", q=q, total=fmt(price * q)), f"c:bp:{type_id}:{price}:{q}",
+                       "success" if price * q <= balance else None))
+        if len(row) == 3:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    if choices and limit > choices[-1]:
+        rows.append([btn(t(lang, "btn_qty_other"), f"c:bo:{type_id}:{price}")])
+    return rows
+
+
 @router.callback_query(F.data.startswith("c:t:"))
-async def type_detail(cb: CallbackQuery, state: FSMContext, core: Core, lang: str):
+async def type_detail(cb: CallbackQuery, state: FSMContext, core: Core, lang: str, db_user: dict):
     await state.clear()
     type_id = int(cb.data.split(":")[2])
     tp = await catalog.get_type(core, type_id)
@@ -205,12 +309,23 @@ async def type_detail(cb: CallbackQuery, state: FSMContext, core: Core, lang: st
         await cb.answer(t(lang, "type_unavailable"), show_alert=True)
         return
     tiers = await catalog.price_tiers(core, type_id)
-    rows = [[btn(t(lang, "btn_buy_tier", price=fmt(x["price"]), n=x["available"]), f"c:bq:{type_id}:{x['price']}", "success")]
-            for x in tiers]
-    if not tiers:
-        rows.append([btn(t(lang, "btn_out"), "noop")])
-    rows.append([btn(t(lang, "back"), "c:types")])
-    await show(cb, type_card(tp, tiers, lang), kb(*rows), photo=tp.get("photo_file_id"))
+    card = type_card(tp, tiers, lang)
+    if len(tiers) == 1:
+        price = tiers[0]["price"]
+        limit = min(tiers[0]["available"], await _max_qty(core))
+        rows = _qty_rows(lang, type_id, price, limit, db_user["balance"])
+        caption = t(lang, "type_caption", card=card)
+    elif tiers:
+        rows = [[btn(t(lang, "btn_buy_tier", price=fmt(x["price"]), n=x["available"]), f"c:bq:{type_id}:{x['price']}", "success")]
+                for x in tiers]
+        caption = t(lang, "type_caption_tiers", card=card)
+    else:
+        rows = [[btn(t(lang, "btn_out"), "noop")]]
+        caption = card
+    rows.append([btn(t(lang, "btn_back_farms"), "c:types")])
+    photo, h = await farm_photo(core, tp)
+    sent = await show(cb, caption, kb(*rows), photo=photo)
+    await remember_card(core, type_id, h, sent)
     await cb.answer()
 
 
@@ -233,21 +348,12 @@ async def qty_pick(cb: CallbackQuery, state: FSMContext, core: Core, lang: str, 
         return
     limit = min(available, await _max_qty(core))
     p = Decimal(price)
-    choices = [q for q in QUICK_QTY if q <= limit]
-    rows, row = [], []
-    for q in choices:
-        row.append(btn(t(lang, "btn_qty", q=q, total=fmt(p * q)), f"c:bp:{type_id}:{price}:{q}",
-                       "success" if p * q <= db_user["balance"] else None))
-        if len(row) == 3:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
-    if limit > 1:
-        rows.append([btn(t(lang, "btn_qty_other"), f"c:bo:{type_id}:{price}")])
+    rows = _qty_rows(lang, int(type_id), p, limit, db_user["balance"])
     rows.append([btn(t(lang, "back"), f"c:t:{type_id}")])
-    await show(cb, t(lang, "qty_ask", name=e(tp["name"]), price=fmt(p), n=available, balance=fmt(db_user["balance"])),
-               kb(*rows), photo=tp.get("photo_file_id"))
+    card = type_card({**tp, "price": p, "available": available}, None, lang)
+    photo, h = await farm_photo(core, tp)
+    sent = await show(cb, t(lang, "qty_ask", card=card, price=fmt(p), balance=fmt(db_user["balance"])), kb(*rows), photo=photo)
+    await remember_card(core, int(type_id), h, sent)
     await cb.answer()
 
 
@@ -347,13 +453,19 @@ async def buy_cancel(cb: CallbackQuery, core: Core, lang: str):
 
 
 # ---------------------------------------------------------------- wallet
+def _tx_row(x: dict, lang: str) -> str:
+    sign = "+" if x["amount"] > 0 else "−"
+    when = x["created_at"].astimezone(LOCAL_TZ).strftime("%d/%m %H:%M")
+    return f"<code>{sign}{fmt(abs(x['amount'])):>9}</code>  {t(lang, 'kind_' + x['kind'])}  ·  {when}"
+
+
 async def _wallet_view(core: Core, user_id: int, lang: str):
     u = await wallet.get_user(core, user_id)
-    txs = await wallet.history(core, user_id, limit=10)
-    lines = [t(lang, "wallet", balance=fmt(u["balance"])), ""]
-    lines += ([t(lang, "last_tx")] + [tx_line(x, lang) for x in txs]) if txs else [t(lang, "no_tx")]
-    return "\n".join(lines), kb([btn(t(lang, "btn_topup_inline"), "c:topup", "success"),
-                                 btn(t(lang, "btn_history"), "c:wh:0")])
+    txs = await wallet.history(core, user_id, limit=8)
+    lines = [t(lang, "wallet", balance=fmt(u["balance"]))]
+    lines += ([t(lang, "last_tx")] + [_tx_row(x, lang) for x in txs]) if txs else [t(lang, "no_tx")]
+    return "\n".join(lines), kb([btn(t(lang, "btn_topup_inline"), "c:topup", "success")],
+                                [btn(t(lang, "btn_history"), "c:wh:0"), btn(t(lang, "btn_home_buy"), "c:types", "primary")])
 
 
 @router.message(F.text.in_(menu_labels("wallet")))
@@ -367,7 +479,7 @@ async def wallet_menu(message: Message, state: FSMContext, core: Core, lang: str
 async def wallet_history(cb: CallbackQuery, core: Core, lang: str):
     page = int(cb.data.split(":")[2])
     txs = await wallet.history(core, cb.from_user.id, limit=15, offset=page * 15)
-    lines = [t(lang, "history_head", page=page + 1), ""] + ([tx_line(x, lang) for x in txs] or [t(lang, "no_tx")])
+    lines = [t(lang, "history_head", page=page + 1)] + ([_tx_row(x, lang) for x in txs] or [t(lang, "no_tx")])
     nav = []
     if page > 0:
         nav.append(btn(t(lang, "prev"), f"c:wh:{page - 1}"))
@@ -510,12 +622,21 @@ async def _submit(message: Message, state: FSMContext, core: Core, lang: str):
 async def _orders_view(core: Core, user_id: int, lang: str):
     ords = await orders.list_orders(core, user_id=user_id, limit=15)
     deps = await deposits.list_deposits(core, user_id=user_id, limit=5)
-    lines = [t(lang, "orders_head"), ""]
-    rows = [[btn(order_line(o, lang)[:60], f"c:o:{o['id']}")] for o in ords]
+    lines = [t(lang, "orders_head")]
+    rows = []
+    for o in ords:
+        snap = o["type_snapshot"]
+        style = {"completed": "success", "needs_review": "danger"}.get(o["status"])
+        rows.append([btn(f"LVL {snap['lvl']}  ·  {fmt(o['price'])}$  ·  {t(lang, 'st_' + o['status'])}", f"c:o:{o['id']}", style)])
     if not ords:
         lines.append(t(lang, "no_orders"))
     if deps:
-        lines += ["", t(lang, "last_deposits")] + [f"{deposit_line(d, lang)}\n   <code>{d['ref']}</code>" for d in deps]
+        lines += ["", t(lang, "last_deposits")]
+        for d in deps:
+            when = d["created_at"].astimezone(LOCAL_TZ).strftime("%d/%m %H:%M")
+            lines.append(f"<code>{fmt(d['amount']):>9}</code>  {t(lang, 'dst_' + d['status'])}  ·  {when}")
+    if not ords:
+        rows.append([btn(t(lang, "btn_home_buy"), "c:types", "success")])
     return "\n".join(lines), kb(*rows)
 
 
