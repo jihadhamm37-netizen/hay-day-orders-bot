@@ -198,7 +198,7 @@ async def types_search(cb: CallbackQuery, state: FSMContext, role: str):
     if not await need(cb, role, "catalog"):
         return
     await state.set_state(A.type_search)
-    await cb.message.answer("اكتب شروط التصفية مثل: <code>lvl>=60 barn>=4000 price<=15</code>")
+    await cb.message.answer("اكتب شروط التصفية مثل: <code>lvl&gt;=60 barn&gt;=4000 price&lt;=15</code>")
     await cb.answer()
 
 

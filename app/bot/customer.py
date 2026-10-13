@@ -109,8 +109,8 @@ async def types_cb(cb: CallbackQuery, state: FSMContext, core: Core):
 async def filter_ask(cb: CallbackQuery, state: FSMContext):
     await state.set_state(Browse.filter)
     await cb.message.answer(
-        "🔎 اكتب شروط البحث، أمثلة:\n<code>lvl 70</code>\n<code>lvl>=60 price<=15</code>\n"
-        "<code>barn>=4000 silo>=3000</code>\n\nأو /cancel للإلغاء.")
+        "🔎 اكتب شروط البحث، أمثلة:\n<code>lvl 70</code>\n<code>lvl&gt;=60 price&lt;=15</code>\n"
+        "<code>barn&gt;=4000 silo&gt;=3000</code>\n\nأو /cancel للإلغاء.")
     await cb.answer()
 
 
@@ -118,7 +118,7 @@ async def filter_ask(cb: CallbackQuery, state: FSMContext):
 async def filter_apply(message: Message, state: FSMContext, core: Core):
     flt = catalog.parse_filter(message.text)
     if not flt:
-        await message.answer("لم أفهم الشروط. مثال: <code>lvl>=70 price<=12</code>")
+        await message.answer("لم أفهم الشروط. مثال: <code>lvl&gt;=70 price&lt;=12</code>")
         return
     await state.clear()
     text, markup = await _types_view(core, flt)

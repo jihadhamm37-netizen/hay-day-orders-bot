@@ -14,6 +14,10 @@ from .system import audit, raise_alert, setting
 
 MAX_FIELD = 200
 
+
+def _esc(v: str) -> str:
+    return str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 _TYPE_STATS = """
 SELECT t.*,
   COUNT(a.id) FILTER (WHERE a.status='available' AND t.is_active)  AS available,
@@ -411,7 +415,7 @@ async def check_stock_alert(core: Core, type_id: int) -> None:
         threshold = 3
     if t["available_raw"] == 0:
         await raise_alert(core, "warning", "out_of_stock",
-                          f"نفد مخزون النوع «{t['name']}» (LVL {t['lvl']}).", "farm_type", type_id, perm="catalog")
+                          f"نفد مخزون النوع «{_esc(t['name'])}» (LVL {t['lvl']}).", "farm_type", type_id, perm="catalog")
     elif t["available_raw"] == threshold:
         await raise_alert(core, "info", "low_stock",
-                          f"مخزون «{t['name']}» منخفض: بقي {threshold} حساب.", "farm_type", type_id, perm="catalog")
+                          f"مخزون «{_esc(t['name'])}» منخفض: بقي {threshold} حساب.", "farm_type", type_id, perm="catalog")
