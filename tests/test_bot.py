@@ -285,5 +285,5 @@ async def test_farm_card_shows_tools_in_post_format(env):
     await catalog.add_accounts(core, "test", tp["id"], [{"line": 1, "login": "a", "password": "b"}])
     await make_user(core, 48, "0")
     await press(dp, bot, 48, f"c:t:{tp['id']}")
-    card = s.of(SendPhoto)[-1].caption.split("\n━")[0]
+    card = s.of(SendPhoto)[-1].caption.split("\n\n")[0]
     assert card == "المستوى: 100\nالمخزن: 4000\nالصومعة: 1000\nالأدوات: 4000\nالسعر: 10.00 USDT\nالمتوفر: 1"

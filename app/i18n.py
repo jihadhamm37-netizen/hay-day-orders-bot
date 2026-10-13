@@ -177,51 +177,50 @@ T: dict[str, dict[str, str]] = {
 
 
 # ======================================================= redesigned screens
-SEP = "━━━━━━━━━━━━━━━━"
 
 T.update({
-    "home": {"ar": "{welcome}\n" + SEP + "\nرصيدك: <b>{balance} USDT</b>\nالمزارع المتوفرة: <b>{stock}</b>",
-             "en": "{welcome}\n" + SEP + "\nBalance: <b>{balance} USDT</b>\nFarms in stock: <b>{stock}</b>"},
-    "types_head": {"ar": "<b>المزارع المتوفرة</b>\n" + SEP + "\nاختر المزرعة لعرض التفاصيل والشراء",
-                   "en": "<b>Available farms</b>\n" + SEP + "\nPick a farm to see details and buy"},
+    "home": {"ar": "{welcome}\n\nرصيدك: <b>{balance} USDT</b>\nالمزارع المتوفرة: <b>{stock}</b>",
+             "en": "{welcome}\n\nBalance: <b>{balance} USDT</b>\nFarms in stock: <b>{stock}</b>"},
+    "types_head": {"ar": "<b>المزارع المتوفرة</b>\n\nاختر المزرعة لعرض التفاصيل والشراء",
+                   "en": "<b>Available farms</b>\n\nPick a farm to see details and buy"},
     "page": {"ar": "الصفحة {p} من {n}", "en": "Page {p} of {n}"},
-    "type_caption": {"ar": "{card}\n" + SEP + "\nاختر عدد المزارع:", "en": "{card}\n" + SEP + "\nHow many farms?"},
-    "type_caption_tiers": {"ar": "{card}\n" + SEP + "\nاختر السعر:", "en": "{card}\n" + SEP + "\nChoose a price:"},
+    "type_caption": {"ar": "{card}\n\nاختر عدد المزارع:", "en": "{card}\n\nHow many farms?"},
+    "type_caption_tiers": {"ar": "{card}\n\nاختر السعر:", "en": "{card}\n\nChoose a price:"},
     "btn_back_farms": {"ar": "رجوع إلى المزارع", "en": "Back to farms"},
     "btn_qty": {"ar": "{q}  ·  {total}$", "en": "{q}  ·  {total}$"},
-    "qty_ask": {"ar": "{card}\n" + SEP + "\nسعر المزرعة: {price} USDT\nرصيدك: {balance} USDT\n" + SEP + "\nاختر عدد المزارع:",
-                "en": "{card}\n" + SEP + "\nPrice per farm: {price} USDT\nYour balance: {balance} USDT\n" + SEP + "\nHow many farms?"},
-    "confirm": {"ar": "<b>تأكيد الطلب</b>\n" + SEP + "\n{specs}\n" + SEP + "\nالكمية         {qty}\nسعر المزرعة    {price} USDT\n<b>الإجمالي       {total} USDT</b>\n" + SEP +
-                      "\nرصيدك الحالي   {balance} USDT\nبعد الشراء     {after} USDT\n" + SEP + "\nرقم الطلب: <code>{ref}</code>\nصالح لمدة {ttl} دقيقة",
-                "en": "<b>Confirm your order</b>\n" + SEP + "\n{specs}\n" + SEP + "\nQuantity        {qty}\nPrice per farm  {price} USDT\n<b>Total           {total} USDT</b>\n" + SEP +
-                      "\nBalance         {balance} USDT\nAfter purchase  {after} USDT\n" + SEP + "\nOrder: <code>{ref}</code>\nValid for {ttl} minutes"},
+    "qty_ask": {"ar": "{card}\n\nسعر المزرعة: {price} USDT\nرصيدك: {balance} USDT\n\nاختر عدد المزارع:",
+                "en": "{card}\n\nPrice per farm: {price} USDT\nYour balance: {balance} USDT\n\nHow many farms?"},
+    "confirm": {"ar": "<b>تأكيد الطلب</b>\n\n{specs}\n\nالكمية         {qty}\nسعر المزرعة    {price} USDT\n<b>الإجمالي       {total} USDT</b>\n" +
+                      "\nرصيدك الحالي   {balance} USDT\nبعد الشراء     {after} USDT\n\nرقم الطلب: <code>{ref}</code>\nصالح لمدة {ttl} دقيقة",
+                "en": "<b>Confirm your order</b>\n\n{specs}\n\nQuantity        {qty}\nPrice per farm  {price} USDT\n<b>Total           {total} USDT</b>\n" +
+                      "\nBalance         {balance} USDT\nAfter purchase  {after} USDT\n\nOrder: <code>{ref}</code>\nValid for {ttl} minutes"},
     "btn_confirm": {"ar": "تأكيد الشراء  ·  {total} USDT", "en": "Confirm  ·  {total} USDT"},
-    "bought": {"ar": "<b>تم الشراء بنجاح</b>\n" + SEP + "\nرقم الطلب    <code>{ref}</code>\nالكمية       {qty}\nالإجمالي     {total} USDT\n" + SEP + "\nبيانات الدخول في الرسالة التالية، ويمكنك عرضها لاحقاً من «طلباتي».",
-               "en": "<b>Purchase complete</b>\n" + SEP + "\nOrder      <code>{ref}</code>\nQuantity   {qty}\nTotal      {total} USDT\n" + SEP + "\nYour login details are in the next message; view them anytime in “My orders”."},
-    "creds": {"ar": "<b>بيانات المزرعة</b>{part}\n" + SEP + "\n{specs}\n" + SEP + "\n<b>ID:</b> <code>{login}</code>\n<b>Password:</b> <code>{password}</code>\n" + SEP +
+    "bought": {"ar": "<b>تم الشراء بنجاح</b>\n\nرقم الطلب    <code>{ref}</code>\nالكمية       {qty}\nالإجمالي     {total} USDT\n\nبيانات الدخول في الرسالة التالية، ويمكنك عرضها لاحقاً من «طلباتي».",
+               "en": "<b>Purchase complete</b>\n\nOrder      <code>{ref}</code>\nQuantity   {qty}\nTotal      {total} USDT\n\nYour login details are in the next message; view them anytime in “My orders”."},
+    "creds": {"ar": "<b>بيانات المزرعة</b>{part}\n\n{specs}\n\n<b>ID:</b> <code>{login}</code>\n<b>Password:</b> <code>{password}</code>\n" +
                     "\nرقم الطلب: <code>{ref}</code>\nالسعر: {price} USDT\nاحفظ البيانات ولا تشاركها مع أحد.",
-              "en": "<b>Farm login details</b>{part}\n" + SEP + "\n{specs}\n" + SEP + "\n<b>ID:</b> <code>{login}</code>\n<b>Password:</b> <code>{password}</code>\n" + SEP +
+              "en": "<b>Farm login details</b>{part}\n\n{specs}\n\n<b>ID:</b> <code>{login}</code>\n<b>Password:</b> <code>{password}</code>\n" +
                     "\nOrder: <code>{ref}</code>\nPrice: {price} USDT\nKeep these details private."},
-    "creds_batch": {"ar": "<b>بيانات {n} مزارع</b>\n" + SEP + "\n{specs}\n" + SEP + "\nرقم الطلب: <code>{ref}</code>\nالإجمالي: {total} USDT\nاضغط على القائمة لنسخها كاملة:",
-                    "en": "<b>Login details for {n} farms</b>\n" + SEP + "\n{specs}\n" + SEP + "\nOrder: <code>{ref}</code>\nTotal: {total} USDT\nTap the list to copy it all:"},
-    "wallet": {"ar": "<b>محفظتي</b>\n" + SEP + "\nالرصيد المتاح\n<b>{balance} USDT</b>\n" + SEP, "en": "<b>My wallet</b>\n" + SEP + "\nAvailable balance\n<b>{balance} USDT</b>\n" + SEP},
+    "creds_batch": {"ar": "<b>بيانات {n} مزارع</b>\n\n{specs}\n\nرقم الطلب: <code>{ref}</code>\nالإجمالي: {total} USDT\nاضغط على القائمة لنسخها كاملة:",
+                    "en": "<b>Login details for {n} farms</b>\n\n{specs}\n\nOrder: <code>{ref}</code>\nTotal: {total} USDT\nTap the list to copy it all:"},
+    "wallet": {"ar": "<b>محفظتي</b>\n\nالرصيد المتاح\n<b>{balance} USDT</b>", "en": "<b>My wallet</b>\n\nAvailable balance\n<b>{balance} USDT</b>\n"},
     "last_tx": {"ar": "<b>آخر العمليات</b>", "en": "<b>Recent activity</b>"},
-    "history_head": {"ar": "<b>سجل العمليات</b>  ·  الصفحة {page}\n" + SEP, "en": "<b>Transaction history</b>  ·  page {page}\n" + SEP},
-    "topup_start": {"ar": "<b>شحن الرصيد</b>  ·  الخطوة 1 من 3\n" + SEP + "\nاختر المبلغ أو اكتبه بعملة USDT\nالحد: من {min} إلى {max} USDT",
-                    "en": "<b>Top up</b>  ·  step 1 of 3\n" + SEP + "\nPick an amount or type it in USDT\nLimits: {min} to {max} USDT"},
-    "topup_details": {"ar": "<b>شحن الرصيد</b>  ·  الخطوة 2 من 3\n" + SEP + "\nالمبلغ          <b>{amount} USDT</b>\nمعرّف Binance Pay\n<code>{pay_id}</code>\n" + SEP + "\n{instructions}\n" + SEP +
+    "history_head": {"ar": "<b>سجل العمليات</b>  ·  الصفحة {page}", "en": "<b>Transaction history</b>  ·  page {page}\n"},
+    "topup_start": {"ar": "<b>شحن الرصيد</b>  ·  الخطوة 1 من 3\n\nاختر المبلغ أو اكتبه بعملة USDT\nالحد: من {min} إلى {max} USDT",
+                    "en": "<b>Top up</b>  ·  step 1 of 3\n\nPick an amount or type it in USDT\nLimits: {min} to {max} USDT"},
+    "topup_details": {"ar": "<b>شحن الرصيد</b>  ·  الخطوة 2 من 3\n\nالمبلغ          <b>{amount} USDT</b>\nمعرّف Binance Pay\n<code>{pay_id}</code>\n\n{instructions}\n" +
                             "\nرقم الطلب: <code>{ref}</code>\nأرسل الآن صورة إثبات الدفع.",
-                      "en": "<b>Top up</b>  ·  step 2 of 3\n" + SEP + "\nAmount          <b>{amount} USDT</b>\nBinance Pay ID\n<code>{pay_id}</code>\n" + SEP + "\n{instructions}\n" + SEP +
+                      "en": "<b>Top up</b>  ·  step 2 of 3\n\nAmount          <b>{amount} USDT</b>\nBinance Pay ID\n<code>{pay_id}</code>\n\n{instructions}\n" +
                             "\nRequest: <code>{ref}</code>\nNow send the payment screenshot."},
-    "photo_ok_txid": {"ar": "<b>شحن الرصيد</b>  ·  الخطوة 3 من 3\n" + SEP + "\nتم استلام الصورة.\nأرسل الآن رقم الطلب (Order ID) من تفاصيل التحويل في Binance.",
-                      "en": "<b>Top up</b>  ·  step 3 of 3\n" + SEP + "\nScreenshot received.\nNow send the Order ID from the transfer details in Binance."},
-    "topup_submitted": {"ar": "<b>تم استلام طلب الشحن</b>\n" + SEP + "\nرقم الطلب: <code>{ref}</code>\nالحالة: قيد المراجعة\n" + SEP + "\nسيصلك إشعار فور التحقق من وصول المبلغ.",
-                        "en": "<b>Top-up received</b>\n" + SEP + "\nRequest: <code>{ref}</code>\nStatus: under review\n" + SEP + "\nYou'll be notified once the payment is confirmed."},
-    "orders_head": {"ar": "<b>طلباتي</b>\n" + SEP, "en": "<b>My orders</b>\n" + SEP},
-    "order_card": {"ar": "<b>الطلب</b> <code>{ref}</code>\n" + SEP + "\n{specs}\n" + SEP + "\nالسعر      {price} USDT\nالحالة     <b>{status}</b>\nالتاريخ    {date}",
-                   "en": "<b>Order</b> <code>{ref}</code>\n" + SEP + "\n{specs}\n" + SEP + "\nPrice      {price} USDT\nStatus     <b>{status}</b>\nDate       {date}"},
-    "support": {"ar": "<b>الدعم الفني</b>\n" + SEP + "\n{text}\n" + SEP + "\nمعرّفك: <code>{uid}</code>\nأرفق رقم الطلب أو الشحن عند التواصل.",
-                "en": "<b>Support</b>\n" + SEP + "\n{text}\n" + SEP + "\nYour ID: <code>{uid}</code>\nInclude your order or top-up number."},
+    "photo_ok_txid": {"ar": "<b>شحن الرصيد</b>  ·  الخطوة 3 من 3\n\nتم استلام الصورة.\nأرسل الآن رقم الطلب (Order ID) من تفاصيل التحويل في Binance.",
+                      "en": "<b>Top up</b>  ·  step 3 of 3\n\nScreenshot received.\nNow send the Order ID from the transfer details in Binance."},
+    "topup_submitted": {"ar": "<b>تم استلام طلب الشحن</b>\n\nرقم الطلب: <code>{ref}</code>\nالحالة: قيد المراجعة\n\nسيصلك إشعار فور التحقق من وصول المبلغ.",
+                        "en": "<b>Top-up received</b>\n\nRequest: <code>{ref}</code>\nStatus: under review\n\nYou'll be notified once the payment is confirmed."},
+    "orders_head": {"ar": "<b>طلباتي</b>", "en": "<b>My orders</b>\n"},
+    "order_card": {"ar": "<b>الطلب</b> <code>{ref}</code>\n\n{specs}\n\nالسعر      {price} USDT\nالحالة     <b>{status}</b>\nالتاريخ    {date}",
+                   "en": "<b>Order</b> <code>{ref}</code>\n\n{specs}\n\nPrice      {price} USDT\nStatus     <b>{status}</b>\nDate       {date}"},
+    "support": {"ar": "<b>الدعم الفني</b>\n\n{text}\n\nمعرّفك: <code>{uid}</code>\nأرفق رقم الطلب أو الشحن عند التواصل.",
+                "en": "<b>Support</b>\n\n{text}\n\nYour ID: <code>{uid}</code>\nInclude your order or top-up number."},
     "btn_home_buy": {"ar": "تصفح المزارع", "en": "Browse farms"},
 })
 
