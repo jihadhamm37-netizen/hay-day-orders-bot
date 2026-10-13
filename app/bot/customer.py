@@ -149,7 +149,7 @@ async def _types_view(core: Core, lang: str, filters: dict | None = None):
     types = await catalog.list_types(core, for_customers=True, filters=filters)
     if not types:
         return (t(lang, "no_match") if filters else t(lang, "no_types")), kb(
-            [btn(t(lang, "btn_filter"), "c:filter")] if not filters else [btn(t(lang, "btn_all_types"), "c:types")])
+            [] if not filters else [btn(t(lang, "btn_all_types"), "c:types")])
     rows = []
     for tp in types:
         if tp["available"] > 0:
@@ -158,7 +158,6 @@ async def _types_view(core: Core, lang: str, filters: dict | None = None):
             rows.append([btn(label, f"c:t:{tp['id']}", "success")])
         else:
             rows.append([btn(f"{type_button(tp)} • {t(lang, 'out')}", f"c:t:{tp['id']}")])
-    rows.append([btn(t(lang, "btn_filter"), "c:filter")])
     if filters:
         rows.append([btn(t(lang, "btn_all_types"), "c:types")])
     return t(lang, "types_head"), kb(*rows)
