@@ -15,6 +15,7 @@ from .services.admins import admin_recipients
 from .services.orders import status_text
 from .services.system import raise_alert, setting
 from .texts import tt
+from .services.rules import tool_label
 
 log = logging.getLogger(__name__)
 
@@ -40,11 +41,11 @@ class AppMessenger:
         off = order["offer"]
         minutes = await setting(self.core, "reservation_minutes", "30")
         text = tt(lang, "summary", ref=order["ref"], name=off["name"], lvl=off["lvl"], barn=off["barn"], silo=off["silo"],
-                  tools=off["tools"], qty=order["quantity"], price=fmt(order["unit_price"]), total=fmt(order["total"]),
+                  tools=f'{off["tools"]} ({tool_label(lang, off.get("tool_type"))})', qty=order["quantity"], price=fmt(order["unit_price"]), total=fmt(order["total"]),
                   cur=order["currency"], minutes=minutes)
         await self._post(order["customer_id"], text, "order_summary", {
             "order_id": order["id"], "ref": order["ref"], "lvl": off["lvl"], "barn": off["barn"], "silo": off["silo"],
-            "tools": off["tools"], "name": off["name"], "quantity": order["quantity"], "unit_price": fmt(order["unit_price"]),
+            "tools": off["tools"], "tool_type": off.get("tool_type", "land"), "name": off["name"], "quantity": order["quantity"], "unit_price": fmt(order["unit_price"]),
             "total": fmt(order["total"]), "currency": order["currency"], "minutes": int(minutes)})
 
     async def send_payment_methods(self, order: dict, methods: list[dict]) -> None:

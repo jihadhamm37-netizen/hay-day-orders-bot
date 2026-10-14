@@ -15,9 +15,12 @@ from .system import audit, raise_alert, setting
 
 MAX_FIELD = 300
 CURRENCIES = {"USDT", "USD", "IQD", "EUR", "SAR", "AED", "JOD", "TRY"}
-OFFER_FIELDS = ("name", "lvl", "barn", "silo", "tools", "price", "currency")
+OFFER_FIELDS = ("name", "lvl", "barn", "silo", "tools", "tool_type", "price", "currency")
+TOOL_TYPES = ("land", "barn", "silo")
+TOOL_ALIASES = {"land": "land", "ارض": "land", "أرض": "land", "barn": "barn", "حظيرة": "barn", "حظيره": "barn", "مخزن": "barn",
+                "silo": "silo", "صومعة": "silo", "صومعه": "silo"}
 
-PUBLIC_COLS = ("id, name, lvl, barn, silo, tools, price, cost, currency, description, token_hint, status, "
+PUBLIC_COLS = ("id, name, lvl, barn, silo, tools, tool_type, price, cost, currency, description, token_hint, status, "
                "created_at, updated_at, sold_at")
 
 
@@ -36,9 +39,9 @@ async def search_offers(core: Core, *, min_level: int | None = None, max_level: 
                         min_price: Any = None, max_price: Any = None, currency: str | None = None,
                         query: str | None = None, limit: int = 15, min_barn: Any = None, max_barn: Any = None,
                         min_silo: Any = None, max_silo: Any = None, min_tools: Any = None,
-                        max_tools: Any = None) -> list[dict]:
+                        max_tools: Any = None, tool_type: str | None = None) -> list[dict]:
     """Available stock grouped into offers. Only real DB data is returned."""
-    q = ("SELECT name, lvl, barn, silo, tools, price, currency, max(description) AS description, count(*) AS available "
+    q = ("SELECT name, lvl, barn, silo, tools, tool_type, price, currency, max(description) AS description, count(*) AS available "
          "FROM farms WHERE status='available'")
     args: list[Any] = []
     for col, op, val in (("lvl", ">=", min_level), ("lvl", "<=", max_level),
@@ -51,11 +54,14 @@ async def search_offers(core: Core, *, min_level: int | None = None, max_level: 
     if currency:
         args.append(currency.upper())
         q += f" AND currency = ${len(args)}"
+    if tool_type in TOOL_TYPES:
+        args.append(tool_type)
+        q += f" AND tool_type = ${len(args)}"
     if query:
         args.append(f"%{query}%")
         q += f" AND (name ILIKE ${len(args)} OR description ILIKE ${len(args)})"
     args.append(max(1, min(limit, 50)))
-    q += f" GROUP BY name, lvl, barn, silo, tools, price, currency ORDER BY lvl, price LIMIT ${len(args)}"
+    q += f" GROUP BY name, lvl, barn, silo, tools, tool_type, price, currency ORDER BY lvl, tool_type, price LIMIT ${len(args)}"
     out = []
     for r in await core.pool.fetch(q, *args):
         d = dict(r)
@@ -71,8 +77,8 @@ async def find_offer(core: Core, code: str) -> dict | None:
             return o
     # fall back to a full scan when there are many groups
     rs = await core.pool.fetch(
-        "SELECT name, lvl, barn, silo, tools, price, currency, max(description) AS description, count(*) AS available "
-        "FROM farms WHERE status='available' GROUP BY name, lvl, barn, silo, tools, price, currency")
+        "SELECT name, lvl, barn, silo, tools, tool_type, price, currency, max(description) AS description, count(*) AS available "
+        "FROM farms WHERE status='available' GROUP BY name, lvl, barn, silo, tools, tool_type, price, currency")
     for r in rs:
         d = dict(r)
         if offer_code(d) == code:
@@ -129,6 +135,14 @@ def _fields(core: Core, data: dict, partial: bool) -> dict:
         out["name"] = str(data["name"]).strip()[:80]
     elif not partial:
         out["name"] = f"Farm LVL {out['lvl']}"
+    tt_raw = data.get("tool_type")
+    if tt_raw not in (None, ""):
+        ttp = TOOL_ALIASES.get(str(tt_raw).strip().lower())
+        if not ttp:
+            raise StoreError("bad_input", "نوع الأدوات يجب أن يكون: أرض أو حظيرة أو صومعة.")
+        out["tool_type"] = ttp
+    elif not partial:
+        out["tool_type"] = "land"
     if "description" in data:
         out["description"] = (str(data["description"] or "").strip()[:1000]) or None
     for f in ("token_id", "password"):
@@ -190,7 +204,7 @@ async def update_farm(core: Core, actor: str, farm_id: int, data: dict, ip: str 
         except asyncpg.UniqueViolationError:
             raise StoreError("duplicate", "هذا الـ Token ID موجود مسبقاً.")
         changes = {k: {"old": cur[k], "new": v} for k, v in sets.items()
-                   if k in ("name", "lvl", "barn", "silo", "tools", "price", "cost", "currency", "status")}
+                   if k in ("name", "lvl", "barn", "silo", "tools", "tool_type", "price", "cost", "currency", "status")}
         if "token_enc" in sets or "password_enc" in sets:
             changes["credentials_changed"] = True
         await audit(conn, actor, "farm.update", "farm", farm_id, changes, ip)
@@ -262,7 +276,7 @@ async def bulk_delete(core: Core, actor: str, ids: list[int], ip: str | None = N
 
 
 # --------------------------------------------------------------- import
-CSV_HELP = "name,lvl,barn,silo,tools,price,currency,token_id,password,cost,description"
+CSV_HELP = "name,lvl,barn,silo,tools,tool_type,price,currency,token_id,password,cost,description"
 
 
 _ID_RE = re.compile(r"^\s*(?:token\s*id|token|id|login|التوكن|المعرف|الايدي|آيدي|ايدي)\s*[:：=\-]\s*(.+)$", re.I)
@@ -321,7 +335,8 @@ def parse_csv(data: bytes) -> tuple[list[dict], list[str]]:
         return [], ["الملف فارغ."]
     aliases = {"level": "lvl", "المستوى": "lvl", "token": "token_id", "tokenid": "token_id", "id": "token_id",
                "pass": "password", "pwd": "password", "السعر": "price", "العملة": "currency", "الاسم": "name",
-               "الوصف": "description", "التكلفة": "cost", "المخزن": "barn", "الصومعة": "silo", "الأدوات": "tools"}
+               "الوصف": "description", "التكلفة": "cost", "المخزن": "barn", "الصومعة": "silo", "الأدوات": "tools",
+               "نوعالأدوات": "tool_type", "نوعالادوات": "tool_type", "tooltype": "tool_type", "type": "tool_type"}
     header = [aliases.get(h.strip().lower().replace(" ", ""), h.strip().lower()) for h in reader[0]]
     if "token_id" not in header or "password" not in header or "lvl" not in header or "price" not in header:
         return [], [f"صف العناوين مطلوب ويجب أن يحتوي على: lvl, price, token_id, password. الصيغة الكاملة: {CSV_HELP}"]
@@ -382,9 +397,9 @@ async def import_farms(core: Core, actor: str, items: list[dict], defaults: dict
 async def check_low_stock(core: Core, offer: dict) -> None:
     left = await core.pool.fetchval(
         "SELECT count(*) FROM farms WHERE status='available' AND name=$1 AND lvl=$2 AND barn=$3 AND silo=$4 "
-        "AND tools=$5 AND price=$6 AND currency=$7",
+        "AND tools=$5 AND price=$6 AND currency=$7 AND tool_type=$8",
         offer["name"], offer["lvl"], offer["barn"], offer["silo"], offer["tools"], Decimal(str(offer["price"])),
-        offer["currency"])
+        offer["currency"], offer.get("tool_type", "land"))
     if left == 0:
         await raise_alert(core, "warning", "out_of_stock",
                           f"نفد مخزون «{_esc(offer['name'])}» مستوى {offer['lvl']} بسعر {offer['price']} {offer['currency']}.",

@@ -8,7 +8,7 @@ from app.services import chat, customers, farms, orders, rules
 
 
 def test_parse():
-    assert rules.parse("اريد 5 مزارع مستوى 50 مخزن 3000 ادوات ارض 3000") == {"lvl": 50, "barn": 3000, "tools": 3000, "qty": 5}
+    assert rules.parse("اريد 5 مزارع مستوى 50 مخزن 3000 ادوات ارض 3000") == {"lvl": 50, "barn": 3000, "tools": 3000, "qty": 5, "tool_type": "land"}
     assert rules.parse("ابي مزرعتين لفل ١٠٠ صومعة 2k") == {"lvl": 100, "silo": 2000, "qty": 2}
     assert rules.parse("I want 3 farms level 80 barn 10,000") == {"lvl": 80, "barn": 10000, "qty": 3}
     assert rules.parse("ابغى مزرعه مستوا 50") == {"lvl": 50, "qty": 1}
@@ -125,3 +125,26 @@ async def test_vietnamese(env):
 async def test_chinese(env):
     r, o, _ = await talk(env, ["你好", "我要三个农场", "1", "确认"], "zh")
     assert "欢迎" in r[0] and "12.00" in r[2] and o["status"] == "awaiting_payment"
+
+
+async def test_same_specs_different_tool_types(core):
+    core.config.anthropic_api_key = ""
+    core.messenger = AppMessenger(core)
+    base = {"lvl": 60, "barn": 3000, "silo": 3000, "tools": 3000, "price": "5"}
+    await farms.import_farms(core, "t", [{"line": i, "token_id": f"L{i}", "password": "p"} for i in range(3)], defaults={**base, "tool_type": "land"})
+    await farms.import_farms(core, "t", [{"line": i, "token_id": f"B{i}", "password": "p"} for i in range(3)], defaults={**base, "tool_type": "barn"})
+    await farms.import_farms(core, "t", [{"line": i, "token_id": f"S{i}", "password": "p"} for i in range(3)], defaults={**base, "tool_type": "silo"})
+    offers = await farms.search_offers(core)
+    assert sorted(o["tool_type"] for o in offers) == ["barn", "land", "silo"]
+    # asking without the tool type → the assistant lists the 3 types
+    r, _, _ = await talk(core, ["بدي 2 مزارع مستوى 60"])
+    assert "أدوات أرض" in r[0] and "أدوات حظيرة" in r[0] and "أدوات صومعة" in r[0]
+    # asking with the tool type → exact farms get reserved
+    r, o, _ = await talk(core, ["بدي 2 مزارع مستوى 60 ادوات حظيرة", "نعم"])
+    assert "أدوات حظيرة" in r[0] and o["status"] == "awaiting_payment"
+    ids = [x["farm_id"] for x in (await orders.get_order(core, o["id"]))["items"]]
+    toks = await core.pool.fetch("SELECT tool_type FROM farms WHERE id = ANY($1::bigint[])", ids)
+    assert {t["tool_type"] for t in toks} == {"barn"}
+    # follow-up by type word only
+    r, o, _ = await talk(core, ["بدي 1 مستوى 60", "صومعه", "اي"])
+    assert "أدوات صومعة" in r[1] and o["status"] == "awaiting_payment"

@@ -37,6 +37,8 @@ TOOLS = [
          "min_silo": {"type": "integer"}, "max_silo": {"type": "integer"},
          "min_tools": {"type": "integer", "description": "tools = land/expansion tools (أدوات أرض)"},
          "max_tools": {"type": "integer"},
+         "tool_type": {"type": "string", "enum": ["land", "barn", "silo"],
+                       "description": "type of the tools in the farm: land (أدوات أرض), barn (أدوات حظيرة), silo (أدوات صومعة)"},
          "currency": {"type": "string"}, "keyword": {"type": "string"}}}},
     {"name": "stock_overview",
      "description": "Overall stock: how many farms are available and the level/price ranges. Use for general questions.",
@@ -90,7 +92,7 @@ HARD RULES (never break them):
 3. Never ask for or reveal Token IDs/passwords. They are delivered automatically by the system only after the payment is verified by staff.
 4. SELLING FLOW:
    a. If the request is vague ("اريد مزارع", "عندكم مزارع؟"), call search_farms and briefly list what is available, then ask which level/specs and how many they want.
-   b. When they describe what they want (level, barn/silo/tools = أدوات أرض, budget, quantity), call search_farms with those filters. If nothing matches exactly, say so and suggest the closest available offers.
+   b. When they describe what they want (level, barn/silo, tools count and tool type: land/barn/silo tools = أدوات أرض/حظيرة/صومعة, budget, quantity. Farms with identical specs can differ only by tool type — always say which tool type), call search_farms with those filters. If nothing matches exactly, say so and suggest the closest available offers.
    c. When they chose an offer and a quantity, call prepare_order. Tell them the total from the tool result (quantity x unit price) and ask: are you sure you want to buy? (e.g. "متأكد تريد تشتري؟ اكتب نعم").
    d. When they answer yes, call confirm_order. The system then sends the payment details. Tell them to transfer the exact amount and send ONLY a screenshot of the transfer here (no transaction number needed). Delivery is automatic after staff verify the payment.
 5. Answer every question about farms, levels, specs, stock, prices, totals, payment methods and the buying steps yourself, from the tools and the store information.
@@ -153,8 +155,11 @@ async def _run_tool(core: Core, customer: dict, name: str, args: dict, res: Agen
         if name == "search_farms":
             offers = await farms_svc.search_offers(
                 core, min_level=args.get("min_level"), max_level=args.get("max_level"), min_price=args.get("min_price"),
-                max_price=args.get("max_price"), currency=args.get("currency"), query=args.get("keyword"), limit=12)
-            return {"offers": [{k: o[k] for k in ("offer_code", "name", "lvl", "barn", "silo", "tools", "price",
+                max_price=args.get("max_price"), currency=args.get("currency"), query=args.get("keyword"), limit=12,
+                min_barn=args.get("min_barn"), max_barn=args.get("max_barn"), min_silo=args.get("min_silo"),
+                max_silo=args.get("max_silo"), min_tools=args.get("min_tools"), max_tools=args.get("max_tools"),
+                tool_type=args.get("tool_type"))
+            return {"offers": [{k: o[k] for k in ("offer_code", "name", "lvl", "barn", "silo", "tools", "tool_type", "price",
                                                    "currency", "available", "description")} for o in offers]}
         if name == "stock_overview":
             return await farms_svc.stock_summary(core)

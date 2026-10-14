@@ -254,7 +254,9 @@
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   const cur = (v, c) => h("span", { class: "num" }, money(v) + " " + (c || "USDT"));
-  const specLine = (o) => `المستوى ${o.lvl} · مخزن ${o.barn} · صومعة ${o.silo} · أدوات ${o.tools}`;
+  const TOOL_AR = { land: "أدوات أرض", barn: "أدوات حظيرة", silo: "أدوات صومعة" };
+  const toolTxt = (o) => `${TOOL_AR[o.tool_type || "land"]} ${o.tools}`;
+  const specLine = (o) => `المستوى ${o.lvl} · مخزن ${o.barn} · صومعة ${o.silo} · ${toolTxt(o)}`;
 
   // ========================================================= dashboard
   ROUTES.dashboard = async () => {
@@ -484,7 +486,7 @@
       const editable = (x) => ["available", "disabled"].includes(x.status);
       body.replaceChildren(table(["", "#", "الاسم", "المستوى", "مخزن", "صومعة", "أدوات", "السعر", "التكلفة", "Token ID", "الحالة", "الطلب", ""], items.map((x) => h("tr", null,
         h("td", null, can("catalog") && editable(x) ? h("input", { type: "checkbox", checked: selected.has(x.id), onchange: (e) => { e.target.checked ? selected.add(x.id) : selected.delete(x.id); renderBulk(); } }) : ""),
-        h("td", { class: "num" }, x.id), h("td", null, x.name), h("td", { class: "num" }, x.lvl), h("td", { class: "num" }, x.barn), h("td", { class: "num" }, x.silo), h("td", { class: "num" }, x.tools),
+        h("td", { class: "num" }, x.id), h("td", null, x.name), h("td", { class: "num" }, x.lvl), h("td", { class: "num" }, x.barn), h("td", { class: "num" }, x.silo), h("td", null, toolTxt(x)),
         h("td", null, cur(x.price, x.currency)), h("td", null, x.cost == null ? "—" : money(x.cost)), h("td", { class: "mono" }, x.token_hint), h("td", null, pill(FARM, x.status)),
         h("td", { class: "mono" }, x.order_ref || "—"),
         h("td", null, can("catalog") && editable(x) ? h("div", { class: "btn-row", style: "flex-wrap:nowrap" }, h("button", { class: "btn sm", onclick: () => farmForm(x) }, "تعديل"),
@@ -498,7 +500,7 @@
       h("div", { class: "btn-row" }, can("catalog") ? h("button", { class: "btn primary", onclick: () => farmForm() }, "＋ مزرعة واحدة") : null,
         can("catalog") ? h("button", { class: "btn", onclick: importModal }, "إضافة مجموعة / استيراد CSV") : null),
       h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "العروض المتوفرة كما يراها البوت")),
-        table(["الاسم", "المستوى", "مخزن", "صومعة", "أدوات", "السعر", "المتوفر"], summary.offers.map((o) => h("tr", null, h("td", null, o.name), h("td", { class: "num" }, o.lvl), h("td", { class: "num" }, o.barn), h("td", { class: "num" }, o.silo), h("td", { class: "num" }, o.tools), h("td", null, cur(o.price, o.currency)), h("td", { class: "num" }, o.available))), "لا يوجد مخزون متوفر")),
+        table(["الاسم", "المستوى", "مخزن", "صومعة", "الأدوات", "السعر", "المتوفر"], summary.offers.map((o) => h("tr", null, h("td", null, o.name), h("td", { class: "num" }, o.lvl), h("td", { class: "num" }, o.barn), h("td", { class: "num" }, o.silo), h("td", null, toolTxt(o)), h("td", null, cur(o.price, o.currency)), h("td", { class: "num" }, o.available))), "لا يوجد مخزون متوفر")),
       h("div", { class: "card" }, h("div", { class: "card-h" }, tabs), h("div", { class: "card-b" }, h("div", { class: "filters" }, Object.values(f)), h("div", { style: "margin-top:10px" }, bulk)), body));
     await load();
   };
@@ -506,13 +508,14 @@
   function farmFields(x) {
     const i = { name: h("input", { type: "text", value: x?.name || "" }), lvl: h("input", { type: "number", min: 1, value: x?.lvl ?? "", dir: "ltr" }),
       barn: h("input", { type: "number", min: 0, value: x?.barn ?? 0, dir: "ltr" }), silo: h("input", { type: "number", min: 0, value: x?.silo ?? 0, dir: "ltr" }),
-      tools: h("input", { type: "number", min: 0, value: x?.tools ?? 0, dir: "ltr" }), price: h("input", { type: "text", inputmode: "decimal", value: x?.price ?? "", dir: "ltr" }),
+      tools: h("input", { type: "number", min: 0, value: x?.tools ?? 0, dir: "ltr" }),
+      tool_type: h("select", null, h("option", { value: "land" }, "أدوات أرض"), h("option", { value: "barn" }, "أدوات حظيرة"), h("option", { value: "silo" }, "أدوات صومعة")), price: h("input", { type: "text", inputmode: "decimal", value: x?.price ?? "", dir: "ltr" }),
       currency: h("input", { type: "text", value: x?.currency || "USDT", dir: "ltr" }), cost: h("input", { type: "text", inputmode: "decimal", value: x?.cost ?? "", dir: "ltr", placeholder: "اختياري — لحساب الربح" }),
       description: h("textarea", { style: "min-height:60px" }) };
-    i.description.value = x?.description || "";
-    const grid = h("div", null, field("الاسم", i.name), h("div", { class: "form-grid" }, field("المستوى", i.lvl), field("المخزن", i.barn), field("الصومعة", i.silo), field("الأدوات", i.tools),
+    i.description.value = x?.description || ""; i.tool_type.value = x?.tool_type || "land";
+    const grid = h("div", null, field("الاسم", i.name), h("div", { class: "form-grid" }, field("المستوى", i.lvl), field("المخزن", i.barn), field("الصومعة", i.silo), field("نوع الأدوات", i.tool_type), field("عدد الأدوات", i.tools),
       field("السعر", i.price), field("العملة", i.currency), field("التكلفة (للأرباح)", i.cost)), field("الوصف (يراه البوت ويذكره للعميل)", i.description));
-    const values = () => ({ name: i.name.value, lvl: i.lvl.value, barn: i.barn.value, silo: i.silo.value, tools: i.tools.value, price: i.price.value, currency: i.currency.value, cost: i.cost.value, description: i.description.value });
+    const values = () => ({ name: i.name.value, lvl: i.lvl.value, barn: i.barn.value, silo: i.silo.value, tools: i.tools.value, tool_type: i.tool_type.value, price: i.price.value, currency: i.currency.value, cost: i.cost.value, description: i.description.value });
     return { grid, values };
   }
 
@@ -545,7 +548,7 @@
       tabs.replaceChildren(h("button", { class: mode === "text" ? "on" : "", onclick: () => { mode = "text"; renderMode(); } }, "مجموعة بنفس المواصفات"),
         h("button", { class: mode === "csv" ? "on" : "", onclick: () => { mode = "csv"; renderMode(); } }, "ملف CSV"));
       box.replaceChildren(...(mode === "text" ? [h("p", { class: "small muted" }, "املأ المواصفات المشتركة مرة واحدة، ثم الصق المزارع بصيغة ID: … / Password: … (سطرين لكل مزرعة)، أو كل مزرعة في سطر: TokenID:كلمة المرور"), grid, field("المزارع", ta)]
-        : [h("p", { class: "small muted" }, "صف العناوين مطلوب: name,lvl,barn,silo,tools,price,currency,token_id,password,cost,description (الأعمدة الأساسية: lvl, price, token_id, password)"), file]));
+        : [h("p", { class: "small muted" }, "صف العناوين مطلوب: name,lvl,barn,silo,tools,tool_type,price,currency,token_id,password,cost,description — tool_type: land أو barn أو silo (الأعمدة الأساسية: lvl, price, token_id, password)"), file]));
       report.replaceChildren();
     };
     const send = (preview) => {

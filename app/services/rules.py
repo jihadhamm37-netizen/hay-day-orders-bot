@@ -91,6 +91,17 @@ SPEC_KW = {
     "silo": r"(?:صومعه|الصومعه|سايلو|سيلو|سلو|silo|kho thoc|粮仓|筒仓)",
     "tools": r"(?:ادوات ارض|ادوات الارض|ادوات|الادوات|اداوت|عدد ارض|tools?|land|cong cu|工具)",
 }
+TOOL_TYPE_RX = [
+    (r"(?:ادوات|الادوات|عده|عدد)\s*(?:ال)?(?:ارض|اراضي|الارض)|\bland\s*tools?\b|\btools?\s*(?:for\s*)?land\b|cong cu dat|土地工具|扩地工具", "land"),
+    (r"(?:ادوات|الادوات|عده|عدد)\s*(?:ال)?(?:حظيره|حضيره|مخزن|مخازن|بارن)|\bbarn\s*tools?\b|\btools?\s*(?:for\s*)?barn\b|cong cu kho(?! thoc)|仓库工具|谷仓工具", "barn"),
+    (r"(?:ادوات|الادوات|عده|عدد)\s*(?:ال)?(?:صومعه|سايلو|سيلو)|\bsilo\s*tools?\b|\btools?\s*(?:for\s*)?silo\b|cong cu (?:silo|kho thoc)|粮仓工具|筒仓工具", "silo"),
+]
+TOOL_LABEL = {
+    "ar": {"land": "أدوات أرض", "barn": "أدوات حظيرة", "silo": "أدوات صومعة"},
+    "en": {"land": "land tools", "barn": "barn tools", "silo": "silo tools"},
+    "vi": {"land": "công cụ đất", "barn": "công cụ kho", "silo": "công cụ silo"},
+    "zh": {"land": "土地工具", "barn": "仓库工具", "silo": "粮仓工具"},
+}
 NUMV = r"(\d+(?:[.,]\d+)?\s*(?:k\b|ك\b|الف|الاف|الآف|الف)?)"
 ZH_QTY = r"([一两二三四五六七八九十]|\d+)\s*(?:个|块)?\s*农场"
 WORD_NUMS = [  # on norm()'d text
@@ -113,18 +124,39 @@ def _num(raw: str) -> int | None:
 def parse(text: str) -> dict:
     """Extract level / barn / silo / tools / quantity from free text (any supported language)."""
     t = norm(text)
-    tv = strip_vi(t)
     out: dict = {}
+    for pat, kind in TOOL_TYPE_RX:                     # "ادوات حظيره 3000" → tool_type=barn, tools=3000
+        mm = re.search(pat, strip_vi(t), re.I)
+        if mm:
+            out["tool_type"] = kind
+            tv0 = strip_vi(t)
+            t = (tv0[:mm.start()] + " ادوات " + tv0[mm.end():]) if tv0 != t else (t[:mm.start()] + " ادوات " + t[mm.end():])
+            break
+    tv = strip_vi(t)
     used: list[tuple[int, int]] = []
+    def free(span: tuple[int, int]) -> bool:
+        return all(span[1] <= a or span[0] >= b for a, b in used)
+
     for key, kw in SPEC_KW.items():
         for src in (t, tv):
-            m = (re.search(kw + r"\s*(?:[:=]|هو|هي|يكون|بس|فقط|تقريبا)?\s*" + NUMV, src, re.I)
-                 or re.search(NUMV + r"\s*" + kw, src, re.I))
-            if m:
-                out[key] = _num(m.group(1))
-                if src is t:
-                    used.append(m.span())
+            found = None
+            for rx in (kw + r"\s*(?:[:=]|هو|هي|يكون|بس|فقط|تقريبا)?\s*" + NUMV, NUMV + r"\s*" + kw):
+                for mm in re.finditer(rx, src, re.I):
+                    if free(mm.span()):
+                        found = mm
+                        break
+                if found:
+                    break
+            if found:
+                out[key] = _num(found.group(1))
+                used.append(found.span())
                 break
+    if "tool_type" not in out:                          # a bare type word: "حظيره" / "الارض" / "silo"
+        mm = re.search(r"(?:^|\s)(?:ب|ال|بال)?(ارض|حظيره|حضيره|صومعه|سايلو|land|barn|silo)(?=\s|$|\?)(?!\s*\d)", t, re.I)
+        if mm:
+            key = {"ارض": "land", "land": "land", "صومعه": "silo", "سايلو": "silo", "silo": "silo"}.get(mm.group(1).lower(), "barn")
+            if key == "land" or key not in out:
+                out["tool_type"] = key
     rest = t
     for a, b in sorted(used, reverse=True):
         rest = rest[:a] + " " * (b - a) + rest[b:]
@@ -142,6 +174,10 @@ def parse(text: str) -> dict:
             if re.search(pat, restv, re.I):
                 out["qty"] = n
                 break
+    if "qty" not in out and used:                        # "بدي 1 مستوى 60": the number left over is the quantity
+        left = re.findall(r"(?<![\d.])(\d{1,3})(?![\d.])", rest)
+        if len(left) == 1 and 0 < int(left[0]) <= 500:
+            out["qty"] = int(left[0])
     return out
 
 
@@ -212,12 +248,16 @@ R = {
                      "vi": "\n\nĐơn {ref} đang chờ: trả lời “có” để xác nhận hoặc “không” để hủy.", "zh": "\n\n订单 {ref} 待确认：回复“是”确认，或“不”取消。"},
 }
 OFFER_FMT = {
-    "ar": "مستوى {lvl} — مخزن {barn}، صومعة {silo}، أدوات {tools} — {price} {cur} (متوفر {n})",
-    "en": "Level {lvl} — barn {barn}, silo {silo}, tools {tools} — {price} {cur} ({n} available)",
-    "vi": "Cấp {lvl} — kho {barn}, silo {silo}, công cụ {tools} — {price} {cur} (còn {n})",
-    "zh": "等级 {lvl} — 仓库 {barn}，粮仓 {silo}，工具 {tools} — {price} {cur}（剩 {n}）",
+    "ar": "مستوى {lvl} — مخزن {barn}، صومعة {silo}، {tt} {tools} — {price} {cur} (متوفر {n})",
+    "en": "Level {lvl} — barn {barn}, silo {silo}, {tt} {tools} — {price} {cur} ({n} available)",
+    "vi": "Cấp {lvl} — kho {barn}, silo {silo}, {tt} {tools} — {price} {cur} (còn {n})",
+    "zh": "等级 {lvl} — 仓库 {barn}，粮仓 {silo}，{tt} {tools} — {price} {cur}（剩 {n}）",
 }
-SHORT_FMT = {"ar": "مستوى {lvl}", "en": "level {lvl}", "vi": "cấp {lvl}", "zh": "等级 {lvl}"}
+SHORT_FMT = {"ar": "مستوى {lvl}، {tt}", "en": "level {lvl}, {tt}", "vi": "cấp {lvl}, {tt}", "zh": "等级 {lvl}，{tt}"}
+
+
+def tool_label(lang: str, kind: str | None) -> str:
+    return TOOL_LABEL.get(lang, TOOL_LABEL["en"]).get(kind or "land", kind or "")
 
 
 def r(lang: str, key: str, **kw) -> str:
@@ -226,6 +266,7 @@ def r(lang: str, key: str, **kw) -> str:
 
 def offer_text(o: dict, lang: str) -> str:
     return OFFER_FMT.get(lang, OFFER_FMT["en"]).format(lvl=o["lvl"], barn=o["barn"], silo=o["silo"], tools=o["tools"],
+                                                       tt=tool_label(lang, o.get("tool_type")),
                                                        price=fmt(o["price"]), cur=o["currency"], n=o["available"])
 
 
@@ -261,7 +302,8 @@ def reply_lang(text: str, chosen: str | None) -> str:
 
 async def _matching(core: Core, spec: dict) -> list[dict]:
     return await farms_svc.search_offers(core, min_level=spec.get("lvl"), max_level=spec.get("lvl"), min_barn=spec.get("barn"),
-                                         min_silo=spec.get("silo"), min_tools=spec.get("tools"), limit=20)
+                                         min_silo=spec.get("silo"), min_tools=spec.get("tools"),
+                                         tool_type=spec.get("tool_type"), limit=20)
 
 
 # ------------------------------------------------------------------ the dialog
@@ -276,7 +318,7 @@ async def respond(core: Core, customer: dict) -> AgentResult:
     pending = await core.pool.fetchrow(
         "SELECT * FROM orders WHERE customer_id=$1 AND status='pending_confirmation' ORDER BY id DESC LIMIT 1", cid)
     p = parse(raw)
-    has_spec = bool({"lvl", "barn", "silo", "tools"} & p.keys())
+    has_spec = bool({"lvl", "barn", "silo", "tools", "tool_type"} & p.keys())
     m = lambda rx: bool(rx.search(t) or rx.search(tv))  # noqa: E731
 
     async def finish(text: str, state: dict | None = None) -> AgentResult:
@@ -320,7 +362,7 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         if not rows:
             return await finish(r(lang, "status_none"))
         return await finish("\n".join(
-            f"{o['ref']}: {orders_svc.status_text(o['status'], lang)} — {o['quantity']} × {SHORT_FMT.get(lang, SHORT_FMT['en']).format(lvl=o['offer']['lvl'])}"
+            f"{o['ref']}: {orders_svc.status_text(o['status'], lang)} — {o['quantity']} × {SHORT_FMT.get(lang, SHORT_FMT['en']).format(lvl=o['offer']['lvl'], tt=tool_label(lang, o['offer'].get('tool_type')))}"
             f" — {fmt(o['total'])} {o['currency']}" + (f" ({o['reason']})" if o["reason"] else "") for o in rows))
     if m(PAY) and not has_spec and "qty" not in p:
         methods = await pay_svc.list_methods(core, active_only=True)
@@ -354,7 +396,10 @@ async def respond(core: Core, customer: dict) -> AgentResult:
     if "qty" in p:
         st["qty"] = p["qty"]
     if has_spec:
-        st["spec"] = {k: p[k] for k in ("lvl", "barn", "silo", "tools") if k in p}
+        prev = st.get("spec") or {}
+        new = {k: p[k] for k in ("lvl", "barn", "silo", "tools", "tool_type") if k in p}
+        # "بدي ادوات حظيره" after choosing a level refines the request instead of replacing it
+        st["spec"] = {**prev, **new} if (set(new) <= {"tool_type", "tools"} and prev) else new
         st.pop("offer", None)
     if picked:
         st["offer"] = picked
@@ -426,7 +471,7 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         st.update(expect="qty")
         return await finish(e.message)
     res.order = o
-    short = SHORT_FMT.get(lang, SHORT_FMT["en"]).format(lvl=offer["lvl"])
+    short = SHORT_FMT.get(lang, SHORT_FMT["en"]).format(lvl=offer["lvl"], tt=tool_label(lang, offer.get("tool_type")))
     keep = {"qty": qty, "offer": offer["offer_code"], "expect": "confirm"}
     qtxt = qty if lang != "ar" else ("مزرعة واحدة" if qty == 1 else "مزرعتين" if qty == 2 else f"{qty} مزارع" if qty <= 10 else f"{qty} مزرعة")
     return await finish(r(lang, "quote", q=qtxt, offer=short, p=fmt(o["unit_price"]), t=fmt(o["total"]), c=o["currency"]), keep)

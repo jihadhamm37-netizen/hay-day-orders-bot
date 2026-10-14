@@ -117,9 +117,9 @@ async def confirm(core: Core, customer_id: int, order_id: int) -> dict:
                 off = o["offer"]
                 farms = await conn.fetch(
                     "SELECT id, price, cost FROM farms WHERE status='available' AND name=$1 AND lvl=$2 AND barn=$3 "
-                    "AND silo=$4 AND tools=$5 AND price=$6 AND currency=$7 ORDER BY id LIMIT $8 FOR UPDATE SKIP LOCKED",
+                    "AND silo=$4 AND tools=$5 AND price=$6 AND currency=$7 AND tool_type=$9 ORDER BY id LIMIT $8 FOR UPDATE SKIP LOCKED",
                     off["name"], off["lvl"], off["barn"], off["silo"], off["tools"], Decimal(off["price"]),
-                    off["currency"], o["quantity"])
+                    off["currency"], o["quantity"], off.get("tool_type", "land"))
                 if len(farms) < o["quantity"]:
                     raise StoreError("out_of_stock", "عذراً، نفدت الكمية قبل التأكيد.", available=len(farms))
                 ids = [f["id"] for f in farms]
