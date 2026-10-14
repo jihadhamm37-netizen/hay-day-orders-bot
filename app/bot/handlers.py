@@ -60,11 +60,26 @@ async def do_handoff(core: Core, customer: dict, reason: str, lang: str, tell_cu
         await cust_svc.log_message(core, customer["id"], "system", "تم تحويل المحادثة إلى الإدارة")
 
 
+AUTO_RESUME_MIN = 30
+
+
+async def maybe_resume_ai(core: Core, cid: int) -> bool:
+    """A chat handed to staff goes back to the AI when no staff member has written to it for a while."""
+    r = await core.pool.execute(
+        "UPDATE customers c SET ai_paused=FALSE WHERE id=$1 AND ai_paused "
+        "AND coalesce(ai_paused_at, 'epoch') < now() - make_interval(mins => $2) "
+        "AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.customer_id=c.id AND m.role='admin' "
+        "                AND m.created_at > now() - make_interval(mins => $2))", cid, AUTO_RESUME_MIN)
+    return r.endswith(" 1")
+
+
 # ------------------------------------------------------------------ start
 @router.message(CommandStart())
 async def start(message: Message, core: Core, customer: dict, lang: str):
     s = await get_settings(core)
-    text = tt(lang, "welcome", store=_esc(s.get("store_name") or "HD农场"))
+    custom = (s.get("welcome_text") or "").strip()
+    text = _esc(custom) if custom and lang == "ar" else tt(lang, "welcome", store=_esc(s.get("store_name") or "HD农场"))
+    await maybe_resume_ai(core, customer["id"])
     await message.answer(text)
     await cust_svc.log_message(core, customer["id"], "assistant", text)
 
@@ -113,6 +128,8 @@ async def chat(message: Message, core: Core, customer: dict, lang: str, role: st
         return
     async with _lock(customer["id"]):
         await cust_svc.log_message(core, customer["id"], "user", text)
+        if await maybe_resume_ai(core, customer["id"]):
+            await cust_svc.log_message(core, customer["id"], "system", "عاد الرد الآلي تلقائياً (لا رد من الإدارة)")
         fresh = await cust_svc.get(core, customer["id"])
         # waiting for a transaction id after a screenshot
         if fresh.get("awaiting", "") and fresh["awaiting"].startswith("txid:") and re.fullmatch(r"[A-Za-z0-9_\-]{5,80}", text):

@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 # key -> (label, kind)
 SETTINGS_SCHEMA: dict[str, tuple[str, str]] = {
     "store_name": ("اسم المتجر", "text"),
+    "welcome_text": ("رسالة الترحيب (عند /start)", "longtext"),
     "ai_enabled": ("الرد الآلي بالذكاء الاصطناعي مفعّل", "bool"),
     "ai_instructions": ("تعليمات أسلوب البوت (للذكاء الاصطناعي)", "longtext"),
     "store_info": ("نبذة عن المتجر", "longtext"),

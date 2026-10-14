@@ -231,3 +231,33 @@ async def test_no_emojis_in_system_texts():
     for k, d in texts.T.items():
         for lang, v in d.items():
             assert not emoji.search(v), (lang, k)
+
+
+async def test_welcome_text_is_editable(env):
+    core, bot, dp, s, model = env
+    from app.services import system
+    await system.update_settings(core, "t", {"welcome_text": "أهلاً بك في متجرنا"})
+    await say(dp, bot, 21, "/start")
+    assert any("أهلاً بك في متجرنا" in t for t in s.texts_to(21))
+
+
+async def test_handed_off_chat_returns_to_ai_after_silence(env):
+    core, bot, dp, s, model = env
+    await say(dp, bot, 22, "/start")
+    await core.pool.execute("UPDATE customers SET ai_paused=TRUE WHERE id=22")
+    await core.pool.execute("UPDATE customers SET ai_paused_at=now() - interval '2 hours' WHERE id=22")
+    model.steps.append([text("أهلاً، كيف أساعدك؟")])
+    await say(dp, bot, 22, "مرحبا")
+    assert any("كيف أساعدك" in t for t in s.texts_to(22))
+    assert not await core.pool.fetchval("SELECT ai_paused FROM customers WHERE id=22")
+
+
+async def test_recent_staff_reply_keeps_chat_with_staff(env):
+    core, bot, dp, s, model = env
+    await say(dp, bot, 23, "/start")
+    await core.pool.execute("UPDATE customers SET ai_paused=TRUE WHERE id=23")
+    await core.pool.execute("UPDATE customers SET ai_paused_at=now() - interval '2 hours' WHERE id=23")
+    await core.pool.execute("INSERT INTO messages(customer_id, role, content) VALUES(23, 'admin', 'معك الدعم')")
+    n = len(model.payloads)
+    await say(dp, bot, 23, "مرحبا")
+    assert len(model.payloads) == n

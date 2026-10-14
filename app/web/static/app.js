@@ -593,7 +593,7 @@
     setTitle("الإعدادات والذكاء الاصطناعي");
     const items = await GET("/settings");
     const inputs = {};
-    const groups = { "الذكاء الاصطناعي": ["ai_enabled", "ai_instructions", "handoff_text"],
+    const groups = { "الذكاء الاصطناعي": ["ai_enabled", "welcome_text", "ai_instructions", "handoff_text"],
       "معلومات المتجر التي يعتمد عليها البوت": ["store_name", "store_info", "warranty_policy", "delivery_policy", "payment_policy", "extra_faq"],
       "قواعد الطلبات": ["reservation_minutes", "max_quantity", "max_open_orders"] };
     const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
