@@ -248,10 +248,10 @@ R = {
                 "en": "Sorry, I didn't quite get that 🙏 Do you want to buy farms? Tell me how many and which type, e.g. “3 farms level 50”.",
                 "vi": "Xin lỗi, tôi chưa hiểu 🙏 Bạn muốn mua nông trại? Hãy cho biết số lượng và loại, ví dụ: “3 nông trại cấp 50”.",
                 "zh": "抱歉，我没太明白 🙏 您是要买农场吗？请告诉我数量和类型，例如“3个农场 等级50”。"},
-    "ask_specs": {"ar": "أكيد! ما مواصفات المزارع التي تحتاجها؟ (المستوى، سعة المخزن، نوع الأدوات: أرض أو حظيرة أو صومعة)\n\nالمتوفر الآن:\n{list}\n\nاكتب المواصفات بكلامك، أو رقم النوع من القائمة.",
-                  "en": "Sure! Which farms do you need? (level, barn size, tool type: land, barn or silo)\n\nAvailable now:\n{list}\n\nDescribe them in your own words, or reply with a number from the list.",
-                  "vi": "Được! Bạn cần nông trại thế nào? (cấp, sức chứa kho, loại công cụ: đất, kho hoặc silo)\n\nHiện có:\n{list}\n\nHãy mô tả hoặc trả lời số thứ tự.",
-                  "zh": "好的！您需要什么样的农场？（等级、仓库容量、工具类型：土地、仓库或粮仓）\n\n目前有：\n{list}\n\n请描述您的需求，或回复列表中的编号。"},
+    "ask_specs": {"ar": "أكيد! ما مواصفات المزارع التي تحتاجها؟ اكتب المستوى، وسعة المخزن، ونوع الأدوات (أرض أو حظيرة أو صومعة).",
+                  "en": "Sure! Which farms do you need? Tell me the level, barn size and tool type (land, barn or silo).",
+                  "vi": "Được! Bạn cần nông trại thế nào? Hãy cho biết cấp, sức chứa kho và loại công cụ (đất, kho hoặc silo).",
+                  "zh": "好的！您需要什么样的农场？请告诉我等级、仓库容量和工具类型（土地、仓库或粮仓）。"},
     "ask_field_lvl": {"ar": "ما المستوى الذي تحتاجه؟ المتوفر: {vals}", "en": "Which level do you need? Available: {vals}",
                       "vi": "Bạn cần cấp nào? Hiện có: {vals}", "zh": "您需要哪个等级？目前有：{vals}"},
     "ask_field_barn": {"ar": "ما سعة المخزن التي تريدها؟ المتوفر: {vals}", "en": "Which barn size? Available: {vals}",
@@ -274,10 +274,10 @@ R = {
                        "zh": "抱歉，部分数量不足：\n{rows}\n\n请写该类型的新数量，例如“土地 4个”，或“取消”。"},
     "shortage_row": {"ar": "• {what}: طلبت {q} والمتوفر {n}", "en": "• {what}: you asked {q}, available {n}",
                      "vi": "• {what}: yêu cầu {q}, còn {n}", "zh": "• {what}：您要 {q}，现有 {n}"},
-    "type_gone": {"ar": "عذرًا، هذا النوع غير متوفر حاليًا ({what}). يمكنك اختيار نوع آخر من المتوفر:\n\n{list}\n\nاكتب المواصفات أو رقم النوع.",
-                  "en": "Sorry, this type is not available right now ({what}). You can choose another available type:\n\n{list}\n\nWrite the specs or the number.",
-                  "vi": "Xin lỗi, loại này hiện hết ({what}). Bạn có thể chọn loại khác:\n\n{list}\n\nViết thông số hoặc số thứ tự.",
-                  "zh": "抱歉，这种目前没有（{what}）。您可以选择其他类型：\n\n{list}\n\n请写规格或编号。"},
+    "type_gone": {"ar": "عذرًا، هذا النوع غير متوفر حاليًا ({what}). اكتب مواصفات نوع آخر (المستوى، المخزن، نوع الأدوات) وسأتحقق لك.",
+                  "en": "Sorry, this type is not available right now ({what}). Write the specs of another type (level, barn, tool type) and I'll check.",
+                  "vi": "Xin lỗi, loại này hiện hết ({what}). Hãy viết thông số loại khác (cấp, kho, loại công cụ), tôi sẽ kiểm tra.",
+                  "zh": "抱歉，这种目前没有（{what}）。请写其他类型的规格（等级、仓库、工具类型），我帮您查。"},
     "ready": {"ar": "تمام، جهزت لك ملخص الطلب 👇\nهل أنت متأكد من الطلب وتريد الانتقال إلى الدفع؟ يرجى كتابة «نعم» للتأكيد أو «لا» للإلغاء، ويمكنك كتابة «تعديل» إذا أردت تغيير المواصفات أو الكمية.",
               "en": "Here's your order summary 👇\nAre you sure and want to go to payment? Reply “yes” to confirm or “no” to cancel; write “edit” to change the specs or quantity.",
               "vi": "Đây là tóm tắt đơn hàng 👇\nBạn chắc chắn và muốn thanh toán? Trả lời “có” để xác nhận, “không” để hủy, hoặc “sửa” để thay đổi.",
@@ -286,13 +286,10 @@ R = {
                     "en": "Done — here is your order 👇 Review it and choose “Yes, pay” or “Edit order”.",
                     "vi": "Xong — đây là đơn của bạn 👇 Kiểm tra rồi chọn “Có, thanh toán” hoặc “Sửa đơn”.",
                     "zh": "好了，这是您的订单 👇 请确认后选择“是，去付款”或“修改订单”。"},
-    "multi_ambiguous": {"ar": "في طلبك نوع له أكثر من خيار ({what}). هذه الخيارات المتوفرة:\n\n{list}\n\nاكتب الطلب مرة ثانية مع تحديد المخزن أو نوع الأدوات لكل نوع.",
-                        "en": "One type in your order has several options ({what}):\n\n{list}\n\nPlease resend the order with the barn size or tool type for each type.",
-                        "vi": "Một loại trong đơn có nhiều lựa chọn ({what}):\n\n{list}\n\nHãy gửi lại đơn kèm kho hoặc loại công cụ cho từng loại.",
-                        "zh": "订单中有一种有多个选项（{what}）：\n\n{list}\n\n请重新发送订单，并注明每种的仓库或工具类型。"},
-    "multi_missing": {"ar": "هذا النوع غير متوفر حالياً: {what}. هذه المزارع المتوفرة:\n\n{list}",
-                      "en": "Not available right now: {what}. Available farms:\n\n{list}",
-                      "vi": "Hiện không có: {what}. Nông trại đang có:\n\n{list}", "zh": "暂时没有：{what}。目前有：\n\n{list}"},
+    "multi_ambiguous": {"ar": "في طلبك نوع له أكثر من خيار ({what}). اكتب الطلب مرة ثانية مع تحديد المخزن ونوع الأدوات لكل نوع.",
+                        "en": "One type in your order has several options ({what}). Please resend the order with the barn size and tool type for each type.",
+                        "vi": "Một loại trong đơn có nhiều lựa chọn ({what}). Hãy gửi lại đơn kèm kho và loại công cụ cho từng loại.",
+                        "zh": "订单中有一种有多个选项（{what}）。请重新发送订单，并注明每种的仓库和工具类型。"},
     "edit": {"ar": "تمام، شو تحب تعدّل؟ تقدر تغيّر العدد أو النوع، مثلاً: «خلي الحظيرة 3» أو «احذف الصومعة»، أو اكتب الطلب من جديد.",
              "en": "Sure, what would you like to change? E.g. “make barn 3”, “remove silo”, or write the order again.",
              "vi": "Bạn muốn sửa gì? Ví dụ: “kho 3”, “bỏ silo”, hoặc viết lại đơn.", "zh": "好的，要修改什么？例如“仓库改成3个”“去掉粮仓”，或重新写订单。"},
@@ -304,10 +301,10 @@ R = {
                      "vi": "\n\nĐơn {ref} đang chờ: trả lời “có” để xác nhận hoặc “không” để hủy.", "zh": "\n\n订单 {ref} 待确认：回复“是”确认，或“不”取消。"},
 }
 OFFER_FMT = {
-    "ar": "مستوى {lvl} — مخزن {barn}، صومعة {silo}، {tt} {tools} — {price} {cur} (متوفر {n})",
-    "en": "Level {lvl} — barn {barn}, silo {silo}, {tt} {tools} — {price} {cur} ({n} available)",
-    "vi": "Cấp {lvl} — kho {barn}, silo {silo}, {tt} {tools} — {price} {cur} (còn {n})",
-    "zh": "等级 {lvl} — 仓库 {barn}，粮仓 {silo}，{tt} {tools} — {price} {cur}（剩 {n}）",
+    "ar": "مستوى {lvl} — مخزن {barn}، صومعة {silo}، {tt} {tools} — {price} {cur}",
+    "en": "Level {lvl} — barn {barn}, silo {silo}, {tt} {tools} — {price} {cur}",
+    "vi": "Cấp {lvl} — kho {barn}, silo {silo}, {tt} {tools} — {price} {cur}",
+    "zh": "等级 {lvl} — 仓库 {barn}，粮仓 {silo}，{tt} {tools} — {price} {cur}",
 }
 SHORT_FMT = {"ar": "مستوى {lvl}، {tt}", "en": "level {lvl}, {tt}", "vi": "cấp {lvl}, {tt}", "zh": "等级 {lvl}，{tt}"}
 
@@ -624,16 +621,16 @@ async def respond(core: Core, customer: dict) -> AgentResult:
             if spec.get("lvl"):
                 near.sort(key=lambda o: abs(o["lvl"] - spec["lvl"]))
             near = near[:8]
-            st.update(expect="type", shown=[o["offer_code"] for o in near])
-            st.pop("spec", None)
+            for k in ("spec", "shown", "expect"):
+                st.pop(k, None)
             return await finish(r(lang, "type_gone", what=spec_text(spec, lang), list=offer_list(near, lang)))
         if len(matches) == 1:
             offer = matches[0]
             st["offer"] = offer["offer_code"]
         elif not spec:
-            shown_list = matches[:8]
-            st.update(expect="type", shown=[o["offer_code"] for o in shown_list])
-            return await finish(r(lang, "ask_specs", list=offer_list(shown_list, lang)))
+            st.pop("shown", None)
+            st.update(expect="specs")
+            return await finish(r(lang, "ask_specs"))
         else:
             field = next((f for f in ("lvl", "barn", "tool_type", "silo", "tools")
                           if f not in spec and len({o.get(f) for o in matches}) > 1), None)

@@ -68,7 +68,9 @@ async def test_welcome(env, hi):
 # 2-3) collect specs (only the missing ones), then the quantity
 async def test_specs_then_quantity_step_by_step(env):
     r, o, _ = await talk(env, ["بدي مزارع", "مستوى 50", "حظيرة", "3", "نعم"])
-    assert "ما مواصفات المزارع" in r[0] and "1)" in r[0]
+    assert "ما مواصفات المزارع" in r[0]
+    assert "1)" not in r[0] and "المتوفر الآن" not in r[0]              # stock list is never shown
+    assert "متوفر 10" not in r[2] and "(متوفر" not in r[2]
     assert "ما نوع الأدوات" in r[1] and "أدوات حظيرة" in r[1]          # level known → asks only the tool type
     assert "كم مزرعة تحتاج من هذا النوع" in r[2]
     assert "ملخص الطلب" in r[3] and "18.00" in r[3] and "«نعم»" in r[3]   # 3 × 6
@@ -103,7 +105,8 @@ async def test_shortage_asks_without_changing_quantity(env):
 
 async def test_type_not_available(env):
     r, o, _ = await talk(env, ["بدي 2 مزارع مستوى 70"])
-    assert "غير متوفر حاليًا" in r[0] and "مستوى 50" in r[0] and o is None
+    assert "غير متوفر حاليًا" in r[0] and "اكتب مواصفات نوع آخر" in r[0] and o is None
+    assert "1)" not in r[0] and "5.00" not in r[0]
 
 
 # 5-6) prices, several types, summary, confirmation, edits
