@@ -205,3 +205,27 @@ async def test_vietnamese(env):
 async def test_chinese(env):
     r, o, _ = await talk(env, ["你好", "我要两个农场 等级100", "确认"], "zh")
     assert "欢迎" in r[0] and "20.00" in r[1] and o["status"] == "awaiting_payment"
+
+
+async def test_memory_kept_for_customer_who_sent_a_proof_before(env):
+    """Real chat from the phone: the customer had sent a payment proof earlier, and the assistant forgot
+    every answer (asked the quantity again after «3 مزارع», then restarted on «مزرعه واحده»)."""
+    c = (await customers.create_codes(env, "t", 1, "x"))[0]
+    await env.pool.execute("UPDATE customers SET awaiting='txid:999' WHERE id=$1", c["id"])
+    out = []
+    for msg in ["بدي مزارع", "ليش", "3 مزارع مستوى 50", "ادوات حضيره", "مزرعه واحده"]:
+        last = await env.pool.fetchval("SELECT coalesce(max(id),0) FROM messages")
+        await chat.handle_text(env, await customers.get(env, c["id"]), msg)
+        out.append("\n".join(x["content"] for x in await env.pool.fetch(
+            "SELECT content FROM messages WHERE customer_id=$1 AND id>$2 AND role<>'user' AND kind<>'internal' ORDER BY id", c["id"], last)))
+    assert "ما مواصفات" in out[0]
+    assert "ما نوع الأدوات" in out[2]
+    assert "18.00" in out[3]                                  # 3 remembered → 3 × 6 (barn tools)
+    o = (await orders.customer_orders(env, c["id"], 1))[0]
+    assert o["quantity"] == 1 and "6.00" in out[4]          # «مزرعه واحده» changes it to 1, no restart
+    assert "ما مواصفات" not in out[4]
+
+
+async def test_shortage_after_tool_type_answer(env):
+    r, o, _ = await talk(env, ["8 مزارع مستوى 50", "صومعة"])
+    assert "طلبت 8 مزارع، والمتوفر في المخزون 5 مزارع فقط" in r[1]

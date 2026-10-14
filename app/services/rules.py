@@ -346,18 +346,18 @@ def field_vals_text(field: str, vals: list, lang: str) -> str:
 
 # ------------------------------------------------------------------ conversation state
 async def load_state(core: Core, cid: int) -> dict:
-    a = await core.pool.fetchval("SELECT awaiting FROM customers WHERE id=$1", cid)
-    if a and a.startswith("dlg:"):
+    a = await core.pool.fetchval("SELECT dialog FROM customers WHERE id=$1", cid)
+    if a:
         try:
-            return json.loads(a[4:])
+            return json.loads(a)
         except ValueError:
             pass
     return {}
 
 
 async def save_state(core: Core, cid: int, st: dict) -> None:
-    val = ("dlg:" + json.dumps(st, ensure_ascii=False)) if st else None
-    await core.pool.execute("UPDATE customers SET awaiting=$2 WHERE id=$1 AND (awaiting IS NULL OR awaiting LIKE 'dlg:%')", cid, val)
+    val = json.dumps(st, ensure_ascii=False) if st else None
+    await core.pool.execute("UPDATE customers SET dialog=$2 WHERE id=$1", cid, val)
 
 
 def reply_lang(text: str, chosen: str | None) -> str:
@@ -668,7 +668,8 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         st.update(expect="qty")
         return await finish(e.message)
     res.order = o
-    return await finish(r(lang, "ready"), {"qty": qty, "offer": offer["offer_code"], "expect": "confirm"})
+    return await finish(r(lang, "ready"), {"qty": qty, "offer": offer["offer_code"], "expect": "confirm",
+                                           **({"spec": st["spec"]} if st.get("spec") else {})})
 
 
 def spec_text(spec: dict, lang: str) -> str:
