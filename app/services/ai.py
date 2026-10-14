@@ -173,6 +173,8 @@ async def _run_tool(core: Core, customer: dict, name: str, args: dict, res: Agen
 async def _call_api(core: Core, payload: dict) -> dict:
     headers = {"x-api-key": core.config.anthropic_api_key, "anthropic-version": "2023-06-01",
                "content-type": "application/json"}
+    if core.config.anthropic_workspace_id:
+        headers["anthropic-workspace-id"] = core.config.anthropic_workspace_id
     timeout = aiohttp.ClientTimeout(total=60)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         async with s.post(API_URL, headers=headers, data=json.dumps(payload)) as r:

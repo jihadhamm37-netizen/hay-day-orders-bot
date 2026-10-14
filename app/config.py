@@ -37,6 +37,7 @@ class Config:
     require_tg_code: bool = True      # web login: 2nd factor sent through the bot
     anthropic_api_key: str = ""
     ai_model: str = "claude-haiku-5-5"
+    anthropic_workspace_id: str = ""
     reset_db: bool = False
     backup_dir: str = "/tmp/backups"
     backup_every_hours: int = 24
@@ -72,6 +73,7 @@ class Config:
             require_tg_code=_bool(os.environ.get("REQUIRE_TELEGRAM_CODE"), True),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "").strip(),
             ai_model=os.environ.get("AI_MODEL", "claude-haiku-5-5").strip() or "claude-haiku-5-5",
+            anthropic_workspace_id=os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip(),
             reset_db=_bool(os.environ.get("RESET_DB"), False),
             backup_dir=os.environ.get("BACKUP_DIR", "/tmp/backups"),
             backup_every_hours=int(os.environ.get("BACKUP_EVERY_HOURS", "24")),
