@@ -47,9 +47,12 @@ TOOLS = [
      "description": "Prepare an order for an offer the customer clearly wants. The SYSTEM then shows the customer an "
                     "official summary with the final price and a confirm button. Nothing is reserved until they confirm. "
                     "Only call when the customer has chosen a specific offer and quantity.",
-     "input_schema": {"type": "object", "required": ["offer_code", "quantity"], "properties": {
-         "offer_code": {"type": "string", "description": "offer_code from search_farms"},
-         "quantity": {"type": "integer", "minimum": 1}}}},
+     "input_schema": {"type": "object", "properties": {
+         "offer_code": {"type": "string", "description": "offer_code from search_farms (single type)"},
+         "quantity": {"type": "integer", "minimum": 1},
+         "items": {"type": "array", "description": "several farm types in ONE order",
+                   "items": {"type": "object", "required": ["offer_code", "quantity"], "properties": {
+                       "offer_code": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}}}}}},
     {"name": "confirm_order",
      "description": "The customer clearly said YES (نعم/اي/تمام/أكيد/yes) to buying the order you just prepared. Reserves the "
                     "farms and the SYSTEM immediately sends the payment details. Never call it without an explicit yes.",
@@ -164,7 +167,8 @@ async def _run_tool(core: Core, customer: dict, name: str, args: dict, res: Agen
         if name == "stock_overview":
             return await farms_svc.stock_summary(core)
         if name == "prepare_order":
-            o = await orders_svc.prepare(core, cid, str(args.get("offer_code", "")), int(args.get("quantity", 1)))
+            items = args.get("items") or [{"offer_code": args.get("offer_code", ""), "quantity": args.get("quantity", 1)}]
+            o = await orders_svc.prepare_lines(core, cid, [(str(i.get("offer_code", "")), int(i.get("quantity", 1))) for i in items])
             res.order = o
             return {"result": "the system shows the customer an official summary right after your reply. Now ask the customer to confirm the purchase (yes/no)",
                     "order_ref": o["ref"], "quantity": o["quantity"], "unit_price": str(o["unit_price"]),

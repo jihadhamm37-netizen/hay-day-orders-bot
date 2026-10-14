@@ -142,6 +142,9 @@ def parse(text: str) -> dict:
             found = None
             for rx in (kw + r"\s*(?:[:=]|هو|هي|يكون|بس|فقط|تقريبا)?\s*" + NUMV, NUMV + r"\s*" + kw):
                 for mm in re.finditer(rx, src, re.I):
+                    # barn / silo / tools are capacities (hundreds or thousands); a small number is a quantity
+                    if key != "lvl" and (_num(mm.group(1)) or 0) < 50:
+                        continue
                     if free(mm.span()):
                         found = mm
                         break
@@ -152,8 +155,8 @@ def parse(text: str) -> dict:
                 used.append(found.span())
                 break
     if "tool_type" not in out:                          # a bare type word: "حظيره" / "الارض" / "silo"
-        mm = re.search(r"(?:^|\s)(?:ب|ال|بال)?(ارض|حظيره|حضيره|صومعه|سايلو|land|barn|silo)(?=\s|$|\?)(?!\s*\d)", t, re.I)
-        if mm:
+        mm = re.search(r"(?:^|\s)(?:ب|ال|بال)?(ارض|حظيره|حضيره|صومعه|سايلو|land|barn|silo)(?=\s|$|\?)(?:\s*(\d+))?", t, re.I)
+        if mm and (not mm.group(2) or int(mm.group(2)) < 50):
             key = {"ارض": "land", "land": "land", "صومعه": "silo", "سايلو": "silo", "silo": "silo"}.get(mm.group(1).lower(), "barn")
             if key == "land" or key not in out:
                 out["tool_type"] = key
@@ -174,7 +177,7 @@ def parse(text: str) -> dict:
             if re.search(pat, restv, re.I):
                 out["qty"] = n
                 break
-    if "qty" not in out and used:                        # "بدي 1 مستوى 60": the number left over is the quantity
+    if "qty" not in out and (used or "tool_type" in out):  # "بدي 1 مستوى 60": the number left over is the quantity
         left = re.findall(r"(?<![\d.])(\d{1,3})(?![\d.])", rest)
         if len(left) == 1 and 0 < int(left[0]) <= 500:
             out["qty"] = int(left[0])
@@ -243,6 +246,23 @@ R = {
                 "en": "Sorry, I didn't quite get that 🙏 Do you want to buy farms? Tell me how many and which type, e.g. “3 farms level 50”.",
                 "vi": "Xin lỗi, tôi chưa hiểu 🙏 Bạn muốn mua nông trại? Hãy cho biết số lượng và loại, ví dụ: “3 nông trại cấp 50”.",
                 "zh": "抱歉，我没太明白 🙏 您是要买农场吗？请告诉我数量和类型，例如“3个农场 等级50”。"},
+    "multi_ready": {"ar": "تمام، جهزت لك الطلب 👇 راجع الملخص واختر «نعم، ادفع» للمتابعة أو «تعديل الطلب».",
+                    "en": "Done — here is your order 👇 Review it and choose “Yes, pay” or “Edit order”.",
+                    "vi": "Xong — đây là đơn của bạn 👇 Kiểm tra rồi chọn “Có, thanh toán” hoặc “Sửa đơn”.",
+                    "zh": "好了，这是您的订单 👇 请确认后选择“是，去付款”或“修改订单”。"},
+    "multi_ambiguous": {"ar": "في طلبك نوع له أكثر من خيار ({what}). هذه الخيارات المتوفرة:\n\n{list}\n\nاكتب الطلب مرة ثانية مع تحديد المخزن أو نوع الأدوات لكل نوع.",
+                        "en": "One type in your order has several options ({what}):\n\n{list}\n\nPlease resend the order with the barn size or tool type for each type.",
+                        "vi": "Một loại trong đơn có nhiều lựa chọn ({what}):\n\n{list}\n\nHãy gửi lại đơn kèm kho hoặc loại công cụ cho từng loại.",
+                        "zh": "订单中有一种有多个选项（{what}）：\n\n{list}\n\n请重新发送订单，并注明每种的仓库或工具类型。"},
+    "multi_missing": {"ar": "هذا النوع غير متوفر حالياً: {what}. هذه المزارع المتوفرة:\n\n{list}",
+                      "en": "Not available right now: {what}. Available farms:\n\n{list}",
+                      "vi": "Hiện không có: {what}. Nông trại đang có:\n\n{list}", "zh": "暂时没有：{what}。目前有：\n\n{list}"},
+    "edit": {"ar": "تمام، شو تحب تعدّل؟ تقدر تغيّر العدد أو النوع، مثلاً: «خلي الحظيرة 3» أو «احذف الصومعة»، أو اكتب الطلب من جديد.",
+             "en": "Sure, what would you like to change? E.g. “make barn 3”, “remove silo”, or write the order again.",
+             "vi": "Bạn muốn sửa gì? Ví dụ: “kho 3”, “bỏ silo”, hoặc viết lại đơn.", "zh": "好的，要修改什么？例如“仓库改成3个”“去掉粮仓”，或重新写订单。"},
+    "which_line": {"ar": "طلبك فيه أكثر من نوع. أي نوع تقصد؟ اكتب مثلاً «خلي الأرض 3».",
+                   "en": "Your order has several types. Which one? e.g. “make land 3”.",
+                   "vi": "Đơn có nhiều loại. Bạn muốn sửa loại nào? Ví dụ: “đất 3”.", "zh": "订单里有多种类型，您指哪一种？例如“土地改成3个”。"},
     "pending_hint": {"ar": "\n\nطلبك {ref} بانتظار تأكيدك: اكتب «نعم» للتأكيد أو «لا» للإلغاء.",
                      "en": "\n\nYour order {ref} is waiting: reply “yes” to confirm or “no” to cancel.",
                      "vi": "\n\nĐơn {ref} đang chờ: trả lời “có” để xác nhận hoặc “không” để hủy.", "zh": "\n\n订单 {ref} 待确认：回复“是”确认，或“不”取消。"},
@@ -304,6 +324,60 @@ async def _matching(core: Core, spec: dict) -> list[dict]:
     return await farms_svc.search_offers(core, min_level=spec.get("lvl"), max_level=spec.get("lvl"), min_barn=spec.get("barn"),
                                          min_silo=spec.get("silo"), min_tools=spec.get("tools"),
                                          tool_type=spec.get("tool_type"), limit=20)
+
+
+SEP_RX = re.compile(r"\n|\s*[+،,;，、；]\s*|\s+(?:و|and|va|và|also|plus)\s+|\s+و(?=\d)|(?<=\D)\s*和\s*|还有|以及", re.I)
+EDIT_RX = _rx(r"^(?:تعديل|عدل|اعدل|غير|بدل|تغيير)(?:\s|$)|تعديل الطلب", r"^(?:edit|change|modify)\b", r"^(?:sua|thay doi)\b", r"^(?:修改|更改)")
+REMOVE_RX = _rx(r"احذف|شيل|الغي|بدون|ما بدي|مابدي|ما اريد", r"\bremove\b|\bwithout\b|\bdrop\b", r"\bbo\b|\bxoa\b", r"去掉|不要|删除")
+
+
+def split_lines(raw: str) -> list[dict]:
+    """'2 مستوى 50 ادوات ارض و 2 ادوات حظيره' → [{qty 2, lvl 50, tool land}, {qty 2, tool barn, lvl 50}]"""
+    segs = [x for x in SEP_RX.split(norm(raw)) if x and x.strip()]
+    parsed = [parse(x) for x in segs]
+    parsed = [x for x in parsed if x]
+    with_qty = [x for x in parsed if "qty" in x]
+    if len(with_qty) < 2:
+        return []
+    shared = {}
+    for x in parsed:                     # level / barn / silo / tools said once apply to every type
+        for k in ("lvl", "barn", "silo", "tools"):
+            if k in x and k not in shared:
+                shared[k] = x[k]
+    lines, cur = [], None
+    for x in parsed:
+        if "qty" in x:
+            cur = {**shared, **x}
+            lines.append(cur)
+        elif cur is not None:            # extra details for the previous type ("…، ادوات حظيره")
+            cur.update(x)
+    return lines
+
+
+def _line_match(offer: dict, want: dict) -> bool:
+    return all(offer.get(k) == want[k] for k in ("lvl", "tool_type") if k in want)
+
+
+async def _resolve_lines(core: Core, lines: list[dict], lang: str) -> tuple[list[tuple[str, int]] | None, str | None]:
+    out = []
+    for ln in lines:
+        spec = {k: ln[k] for k in ("lvl", "barn", "silo", "tools", "tool_type") if k in ln}
+        matches = await _matching(core, spec) if spec else await farms_svc.search_offers(core, limit=20)
+        desc = " ".join(filter(None, [SHORT_FMT.get(lang, SHORT_FMT["en"]).split("،")[0].split(",")[0].format(lvl=ln.get("lvl", "?"), tt=""),
+                                       tool_label(lang, ln.get("tool_type")) if ln.get("tool_type") else ""]))
+        if not matches:
+            near = await farms_svc.search_offers(core, limit=8)
+            return None, r(lang, "multi_missing", what=desc, list=offer_list(near, lang)) if near else r(lang, "no_stock")
+        if len(matches) > 1:
+            return None, r(lang, "multi_ambiguous", what=desc, list=offer_list(matches[:8], lang))
+        out.append((matches[0]["offer_code"], int(ln["qty"])))
+    return out, None
+
+
+async def _prepare_multi(core: Core, cid: int, wanted: list[tuple[str, int]], lang: str, res: AgentResult) -> str:
+    o = await orders_svc.prepare_lines(core, cid, wanted)
+    res.order = o
+    return r(lang, "multi_ready")
 
 
 # ------------------------------------------------------------------ the dialog
@@ -371,6 +445,49 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         return await finish(r(lang, "pay", m=names) + extra)
     if m(THANKS) and not has_spec and "qty" not in p and not m(BUY):
         return await finish(r(lang, "thanks"))
+
+    # 3b) edit button / "تعديل"
+    if m(EDIT_RX) and short_msg and not has_spec and "qty" not in p:
+        return await finish(r(lang, "edit"), {**st, "expect": "edit"})
+
+    # 3c) several types in one message → one order with several lines
+    multi = split_lines(raw)
+    if multi:
+        wanted, problem = await _resolve_lines(core, multi, lang)
+        if problem:
+            return await finish(problem, {})
+        try:
+            text = await _prepare_multi(core, cid, wanted, lang, res)
+        except StoreError as e:
+            return await finish(e.message, {})
+        return await finish(text, {"lines": [[c, q] for c, q in wanted], "expect": "confirm"})
+
+    # 3d) changing an order that has several types ("خلي الحظيره 3", "احذف الصومعه", "زيد الارض 1")
+    if st.get("lines") and len(st["lines"]) > 1 and (p.keys() & {"qty", "tool_type", "lvl"}):
+        offers = {c: await farms_svc.find_offer(core, c) for c, _ in st["lines"]}
+        target = [c for c, _ in st["lines"] if offers[c] and _line_match(offers[c], p)] if (p.keys() & {"tool_type", "lvl"}) else []
+        if len(target) != 1:
+            return await finish(r(lang, "which_line"))
+        lines = [[c, q] for c, q in st["lines"]]
+        if m(REMOVE_RX):
+            lines = [[c, q] for c, q in lines if c != target[0]]
+        elif "qty" in p:
+            lines = [[c, (p["qty"] if c == target[0] else q)] for c, q in lines]
+        else:
+            return await finish(r(lang, "which_line"))
+        lines = [[c, q] for c, q in lines if q > 0]
+        if not lines:
+            return await finish(r(lang, "ok_no"), {})
+        try:
+            if len(lines) == 1:
+                st.clear()
+                st.update({"qty": lines[0][1], "offer": lines[0][0]})
+                p, has_spec = {}, False    # continue below with the one remaining type
+            else:
+                text = await _prepare_multi(core, cid, [(c, q) for c, q in lines], lang, res)
+                return await finish(text, {"lines": lines, "expect": "confirm"})
+        except StoreError as e:
+            return await finish(e.message)
 
     # 4) fill the order slots from this message + context
     expect = st.get("expect")

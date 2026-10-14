@@ -162,3 +162,13 @@ button { cursor: pointer; }
 .lang.on { background: var(--field-2); border-color: var(--field-2); color: #fff; }
 .lang-btn { font-weight: 700; font-size: 13px; }
 @media (max-width: 360px) { .login .langs { grid-template-columns: 1fr 1fr; } }
+
+/* multi-type order lines */
+.ticket .line { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.ticket .line:first-child { padding-top: 0; }
+.ticket .line:last-of-type { border-bottom: 0; }
+.line-h { font-size: 12.5px; font-weight: 700; color: var(--field-2); margin-bottom: 2px; }
+.line-main { font-weight: 600; font-size: 16px; }
+.line-sub { font-size: 13px; color: var(--muted); }
+.line-calc { font-size: 14px; margin-top: 2px; text-align: end; }
+.ticket .ask { padding: 0 14px; font-weight: 600; }

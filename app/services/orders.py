@@ -61,37 +61,63 @@ async def _int_setting(core: Core, key: str, default: int) -> int:
 
 # ----------------------------------------------------------------- prepare
 async def prepare(core: Core, customer_id: int, offer_code: str, quantity: int) -> dict:
-    """Create an order awaiting the customer's confirmation. Nothing is reserved yet."""
+    """Create an order (one farm type) awaiting the customer's confirmation. Nothing is reserved yet."""
+    return await prepare_lines(core, customer_id, [(offer_code, quantity)])
+
+
+async def prepare_lines(core: Core, customer_id: int, wanted: list[tuple[str, int]]) -> dict:
+    """Create an order with one or more farm types awaiting confirmation. Prices come from the stock only."""
     cust = await core.pool.fetchrow("SELECT * FROM customers WHERE id=$1", customer_id)
     if not cust:
         raise StoreError("not_found", "العميل غير موجود.")
     if cust["is_banned"]:
         raise StoreError("banned", "الحساب موقوف.")
+    if not wanted:
+        raise StoreError("bad_qty", "الطلب فارغ.")
+    merged: dict[str, int] = {}
+    for code, q in wanted:                     # same type twice → one line
+        merged[code] = merged.get(code, 0) + int(q)
     max_q = await _int_setting(core, "max_quantity", 20)
-    if not isinstance(quantity, int) or not (1 <= quantity <= max_q):
-        raise StoreError("bad_qty", f"الكمية يجب أن تكون بين 1 و {max_q}.", max=max_q)
-    offer = await farms_svc.find_offer(core, offer_code)
-    if not offer:
-        raise StoreError("no_offer", "هذا العرض غير متوفر حالياً.")
-    if offer["available"] < quantity:
-        raise StoreError("out_of_stock", f"المتوفر من هذا العرض {offer['available']} فقط.", available=offer["available"])
+    total_q = sum(merged.values())
+    if any(q < 1 for q in merged.values()) or not (1 <= total_q <= max_q):
+        raise StoreError("bad_qty", f"عدد المزارع في الطلب يجب أن يكون بين 1 و {max_q}.", max=max_q)
+    lines, total, currency = [], Decimal("0"), None
+    for code, q in merged.items():
+        offer = await farms_svc.find_offer(core, code)
+        if not offer:
+            raise StoreError("no_offer", "أحد الأنواع المطلوبة غير متوفر حالياً.")
+        if offer["available"] < q:
+            raise StoreError("out_of_stock", f"المتوفر من مستوى {offer['lvl']} ({offer.get('tool_type', 'land')}) "
+                                             f"{offer['available']} فقط.", available=offer["available"], offer_code=code)
+        if currency and offer["currency"] != currency:
+            raise StoreError("currency", "لا يمكن جمع عملات مختلفة في طلب واحد.")
+        currency = offer["currency"]
+        snap = {k: (str(offer[k]) if k == "price" else offer[k]) for k in farms_svc.OFFER_FIELDS}
+        snap["description"] = offer.get("description")
+        snap["offer_code"] = offer["offer_code"]
+        price = Decimal(offer["price"])
+        lines.append({"offer": snap, "quantity": q, "unit_price": str(price), "subtotal": str(price * q)})
+        total += price * q
     open_n = await core.pool.fetchval(
         "SELECT count(*) FROM orders WHERE customer_id=$1 AND status IN ('awaiting_payment','proof_received','payment_review')",
         customer_id)
     if open_n >= await _int_setting(core, "max_open_orders", 3):
         raise StoreError("too_many_open", "لديك طلبات مفتوحة بانتظار الدفع. أكمل أو ألغِ أحدها أولاً.")
-    snap = {k: (str(offer[k]) if k == "price" else offer[k]) for k in farms_svc.OFFER_FIELDS}
-    snap["description"] = offer.get("description")
-    snap["offer_code"] = offer["offer_code"]
-    price = Decimal(offer["price"])
+    first = lines[0]
     async with core.pool.acquire() as conn, conn.transaction():
         await conn.execute("UPDATE orders SET status='cancelled', reason='استُبدل بطلب أحدث', updated_at=now() "
                            "WHERE customer_id=$1 AND status='pending_confirmation'", customer_id)
         o = await conn.fetchrow(
-            "INSERT INTO orders(ref, customer_id, status, offer, quantity, unit_price, total, currency) "
-            "VALUES($1,$2,'pending_confirmation',$3,$4,$5,$6,$7) RETURNING *",
-            make_ref("HD"), customer_id, snap, quantity, price, price * quantity, offer["currency"])
+            "INSERT INTO orders(ref, customer_id, status, offer, quantity, unit_price, total, currency, lines) "
+            "VALUES($1,$2,'pending_confirmation',$3,$4,$5,$6,$7,$8) RETURNING *",
+            make_ref("HD"), customer_id, first["offer"], total_q, Decimal(first["unit_price"]), total, currency, lines)
     return dict(o)
+
+
+def order_lines(o: dict) -> list[dict]:
+    """Lines of any order (old single-type orders included)."""
+    return o.get("lines") or [{"offer": o["offer"], "quantity": o["quantity"], "unit_price": str(o["unit_price"]),
+                               "subtotal": str(o["total"])}]
 
 
 # ----------------------------------------------------------------- confirm
@@ -114,14 +140,18 @@ async def confirm(core: Core, customer_id: int, order_id: int) -> dict:
                     if cur["status"] == "pending_confirmation":
                         raise StoreError("expired", "انتهت صلاحية هذا الطلب، اطلب من جديد.")
                     raise StoreError("already", "تم تأكيد هذا الطلب مسبقاً.")
-                off = o["offer"]
-                farms = await conn.fetch(
-                    "SELECT id, price, cost FROM farms WHERE status='available' AND name=$1 AND lvl=$2 AND barn=$3 "
-                    "AND silo=$4 AND tools=$5 AND price=$6 AND currency=$7 AND tool_type=$9 ORDER BY id LIMIT $8 FOR UPDATE SKIP LOCKED",
-                    off["name"], off["lvl"], off["barn"], off["silo"], off["tools"], Decimal(off["price"]),
-                    off["currency"], o["quantity"], off.get("tool_type", "land"))
-                if len(farms) < o["quantity"]:
-                    raise StoreError("out_of_stock", "عذراً، نفدت الكمية قبل التأكيد.", available=len(farms))
+                farms = []
+                for ln in order_lines(dict(o)):
+                    off = ln["offer"]
+                    got = await conn.fetch(
+                        "SELECT id, price, cost FROM farms WHERE status='available' AND name=$1 AND lvl=$2 AND barn=$3 "
+                        "AND silo=$4 AND tools=$5 AND price=$6 AND currency=$7 AND tool_type=$9 ORDER BY id LIMIT $8 "
+                        "FOR UPDATE SKIP LOCKED",
+                        off["name"], off["lvl"], off["barn"], off["silo"], off["tools"], Decimal(off["price"]),
+                        off["currency"], ln["quantity"], off.get("tool_type", "land"))
+                    if len(got) < ln["quantity"]:
+                        raise StoreError("out_of_stock", "عذراً، نفدت الكمية قبل التأكيد.", available=len(got))
+                    farms.extend(got)
                 ids = [f["id"] for f in farms]
                 await conn.execute("UPDATE farms SET status='reserved', updated_at=now() WHERE id = ANY($1::bigint[])", ids)
                 await conn.executemany("INSERT INTO order_items(order_id, farm_id, price, cost) VALUES($1,$2,$3,$4)",
@@ -141,10 +171,14 @@ async def confirm(core: Core, customer_id: int, order_id: int) -> dict:
     return o
 
 
+TOOL_AR = {"land": "أدوات أرض", "barn": "أدوات حظيرة", "silo": "أدوات صومعة"}
+
+
 def _offer_line(o: dict) -> str:
-    off = o["offer"]
-    return (f"{farms_svc._esc(off['name'])} — المستوى {off['lvl']}، المخزن {off['barn']}، الصومعة {off['silo']}، "
-            f"الأدوات {off['tools']} × {o['quantity']}")
+    return "\n".join(
+        f"{ln['quantity']} × المستوى {ln['offer']['lvl']}، المخزن {ln['offer']['barn']}، الصومعة {ln['offer']['silo']}، "
+        f"{TOOL_AR.get(ln['offer'].get('tool_type', 'land'))} {ln['offer']['tools']} — {ln['unit_price']}"
+        for ln in order_lines(o))
 
 
 async def cancel_by_customer(core: Core, customer_id: int, ref_or_id: Any) -> dict:
@@ -303,13 +337,13 @@ async def get_order(core: Core, order_id: int) -> dict | None:
 
 async def customer_orders(core: Core, customer_id: int, limit: int = 10) -> list[dict]:
     return rows(await core.pool.fetch(
-        "SELECT id, ref, status, offer, quantity, total, currency, reason, reserved_until, created_at, delivered_at "
+        "SELECT id, ref, status, offer, lines, quantity, total, currency, reason, reserved_until, created_at, delivered_at "
         "FROM orders WHERE customer_id=$1 ORDER BY id DESC LIMIT $2", customer_id, limit))
 
 
 async def list_orders(core: Core, *, status: str | None = None, search: str | None = None,
                       customer_id: int | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
-    q = ("SELECT o.id, o.ref, o.customer_id, o.status, o.offer, o.quantity, o.total, o.currency, o.reason, "
+    q = ("SELECT o.id, o.ref, o.customer_id, o.status, o.offer, o.lines, o.quantity, o.total, o.currency, o.reason, "
          "o.failure_reason, o.reserved_until, o.created_at, o.updated_at, o.delivered_at, c.username, c.first_name "
          "FROM orders o JOIN customers c ON c.id=o.customer_id WHERE 1=1")
     args: list[Any] = []

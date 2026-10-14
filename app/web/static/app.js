@@ -414,7 +414,7 @@
       const items = await GET("/orders" + q({ status, search: search.value.trim(), page }));
       body.replaceChildren(table(["الطلب", "العميل", "المزرعة", "الكمية", "الإجمالي", "الحالة", "التاريخ"], items.map((o) => h("tr", { class: "click", onclick: () => (location.hash = "#/order/" + o.id) },
         h("td", { class: "mono" }, o.ref), h("td", null, h("span", { class: "num" }, o.customer_id), o.username ? h("div", { class: "small muted" }, "@" + o.username) : null),
-        h("td", { class: "small" }, specLine(o.offer)), h("td", { class: "num" }, o.quantity), h("td", null, cur(o.total, o.currency)),
+        h("td", { class: "small" }, (o.lines && o.lines.length > 1) ? o.lines.map((ln) => h("div", null, `${ln.quantity} × ${specLine(ln.offer)}`)) : specLine(o.offer)), h("td", { class: "num" }, o.quantity), h("td", null, cur(o.total, o.currency)),
         h("td", null, pill(ORDER, o.status), o.failure_reason ? h("div", { class: "small", style: "color:var(--danger)" }, "فشل التسليم") : null), h("td", null, dt(o.created_at)))), "لا توجد طلبات"),
       pager(page, items.length, 50, (x) => { page = x; load(); }));
     };
@@ -447,7 +447,7 @@
       o.failure_reason ? h("div", { class: "notice danger" }, o.failure_reason) : null,
       o.reason ? h("div", { class: "notice" }, "السبب: " + o.reason) : null,
       h("div", { class: "card" }, h("div", { class: "card-b stack" }, h("dl", { class: "kv" },
-        h("dt", null, "المزرعة"), h("dd", null, `${o.offer.name} — ${specLine(o.offer)}`),
+        h("dt", null, "المزارع"), h("dd", null, (o.lines || [{ offer: o.offer, quantity: o.quantity, unit_price: o.unit_price }]).map((ln) => h("div", null, `${ln.quantity} × ${specLine(ln.offer)} — ${money(ln.unit_price)} ${o.currency}`))),
         h("dt", null, "الوسيلة"), h("dd", null, o.method_name || "—"),
         h("dt", null, "محجوز حتى"), h("dd", null, dt(o.reserved_until)), h("dt", null, "أُنشئ"), h("dd", null, dt(o.created_at)),
         h("dt", null, "أُكّد"), h("dd", null, dt(o.confirmed_at)), h("dt", null, "دُفع"), h("dd", null, dt(o.paid_at)), h("dt", null, "سُلّم"), h("dd", null, dt(o.delivered_at))),

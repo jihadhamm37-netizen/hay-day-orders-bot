@@ -37,15 +37,20 @@ class AppMessenger:
 
     # ------------------------------------------------------------ orders
     async def send_order_summary(self, order: dict) -> None:
+        from .services.orders import order_lines
         lang = await self._lang(order["customer_id"])
-        off = order["offer"]
         minutes = await setting(self.core, "reservation_minutes", "30")
-        text = tt(lang, "summary", ref=order["ref"], name=off["name"], lvl=off["lvl"], barn=off["barn"], silo=off["silo"],
-                  tools=f'{off["tools"]} ({tool_label(lang, off.get("tool_type"))})', qty=order["quantity"], price=fmt(order["unit_price"]), total=fmt(order["total"]),
-                  cur=order["currency"], minutes=minutes)
+        lines = order_lines(order)
+        items = [{"lvl": ln["offer"]["lvl"], "barn": ln["offer"]["barn"], "silo": ln["offer"]["silo"],
+                  "tools": ln["offer"]["tools"], "tool_type": ln["offer"].get("tool_type", "land"), "name": ln["offer"]["name"],
+                  "quantity": ln["quantity"], "unit_price": fmt(ln["unit_price"]), "subtotal": fmt(ln["subtotal"])} for ln in lines]
+        text = summary_text(lang, order["ref"], items, order["quantity"], fmt(order["total"]), order["currency"])
+        first = items[0]
         await self._post(order["customer_id"], text, "order_summary", {
-            "order_id": order["id"], "ref": order["ref"], "lvl": off["lvl"], "barn": off["barn"], "silo": off["silo"],
-            "tools": off["tools"], "tool_type": off.get("tool_type", "land"), "name": off["name"], "quantity": order["quantity"], "unit_price": fmt(order["unit_price"]),
+            "order_id": order["id"], "ref": order["ref"], "lines": items, "total_qty": order["quantity"],
+            # single-type fields kept for older app versions
+            "lvl": first["lvl"], "barn": first["barn"], "silo": first["silo"], "tools": first["tools"],
+            "tool_type": first["tool_type"], "quantity": order["quantity"], "unit_price": first["unit_price"],
             "total": fmt(order["total"]), "currency": order["currency"], "minutes": int(minutes)})
 
     async def send_payment_methods(self, order: dict, methods: list[dict]) -> None:
@@ -125,3 +130,36 @@ class AppMessenger:
         except Exception as ex:  # notifications must never break the flow
             log.warning("telegram notify failed: %s", ex)
             return False
+
+
+ORDINALS = {
+    "ar": ["النوع الأول", "النوع الثاني", "النوع الثالث", "النوع الرابع", "النوع الخامس", "النوع السادس"],
+    "en": ["Type 1", "Type 2", "Type 3", "Type 4", "Type 5", "Type 6"],
+    "vi": ["Loại 1", "Loại 2", "Loại 3", "Loại 4", "Loại 5", "Loại 6"],
+    "zh": ["类型一", "类型二", "类型三", "类型四", "类型五", "类型六"],
+}
+SUMMARY_WORDS = {
+    "ar": ("ملخص الطلب", "مستوى", "مخزن", "إجمالي المزارع", "المبلغ الإجمالي", "هل تريد تأكيد الطلب والانتقال إلى الدفع؟"),
+    "en": ("Order summary", "level", "barn", "Total farms", "Total amount", "Confirm the order and go to payment?"),
+    "vi": ("Tóm tắt đơn hàng", "cấp", "kho", "Tổng số nông trại", "Tổng số tiền", "Xác nhận đơn và chuyển sang thanh toán?"),
+    "zh": ("订单摘要", "等级", "仓库", "农场总数", "总金额", "确认订单并前往付款？"),
+}
+
+
+def farms_count(lang: str, n: int) -> str:
+    if lang == "ar":
+        return "مزرعة واحدة" if n == 1 else "مزرعتان" if n == 2 else f"{n} مزارع" if n <= 10 else f"{n} مزرعة"
+    return {"en": f"{n} farm" + ("s" if n != 1 else ""), "vi": f"{n} nông trại", "zh": f"{n} 个农场"}.get(lang, str(n))
+
+
+def summary_text(lang: str, ref: str, items: list[dict], total_qty: int, total: str, cur: str) -> str:
+    w = SUMMARY_WORDS.get(lang, SUMMARY_WORDS["en"])
+    ords = ORDINALS.get(lang, ORDINALS["en"])
+    parts = [f"{w[0]}  {ref}"]
+    for i, it in enumerate(items):
+        head = ords[i] if i < len(ords) else f"#{i + 1}"
+        parts.append(f"{head}\n{farms_count(lang, it['quantity'])} — {w[1]} {it['lvl']}\n"
+                     f"{w[2]} {it['barn']} + {tool_label(lang, it['tool_type'])} {it['tools']}\n"
+                     f"{it['quantity']} × {it['unit_price']} {cur}")
+    parts.append(f"{w[3]}: {farms_count(lang, total_qty)}\n{w[4]}: {total} {cur}\n\n{w[5]}")
+    return "\n\n".join(parts)

@@ -117,6 +117,11 @@ def build_router(ok) -> APIRouter:
         await chat.cancel_order(core, c, order_id)
         return ok()
 
+    @r.post("/orders/{order_id}/edit")
+    async def edit(order_id: int, c: dict = Depends(current_customer), core: Core = Depends(get_core)):
+        await chat.edit_order(core, c, order_id)
+        return ok()
+
     @r.post("/orders/{order_id}/method")
     async def method(order_id: int, body: dict = Body(...), c: dict = Depends(current_customer),
                      core: Core = Depends(get_core)):
@@ -128,7 +133,7 @@ def build_router(ok) -> APIRouter:
         out = []
         for o in await orders_svc.customer_orders(core, c["id"], 50):
             out.append({"id": o["id"], "ref": o["ref"], "status": o["status"],
-                        "status_text": orders_svc.status_text(o["status"], c["lang"] or "ar"), "offer": o["offer"],
+                        "status_text": orders_svc.status_text(o["status"], c["lang"] or "ar"), "offer": o["offer"], "lines": o.get("lines"),
                         "quantity": o["quantity"], "total": fmt(o["total"]), "currency": o["currency"],
                         "reason": o["reason"], "created_at": o["created_at"], "delivered_at": o["delivered_at"]})
         return ok(out)

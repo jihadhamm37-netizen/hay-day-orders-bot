@@ -148,3 +148,67 @@ async def test_same_specs_different_tool_types(core):
     # follow-up by type word only
     r, o, _ = await talk(core, ["بدي 1 مستوى 60", "صومعه", "اي"])
     assert "أدوات صومعة" in r[1] and o["status"] == "awaiting_payment"
+
+
+@pytest.fixture
+async def typed(core):
+    core.config.anthropic_api_key = ""
+    core.messenger = AppMessenger(core)
+    base = {"lvl": 50, "barn": 3000, "silo": 2000, "tools": 3000}
+    for t, price in (("land", "5"), ("barn", "6"), ("silo", "7")):
+        await farms.import_farms(core, "t", [{"line": i, "token_id": f"{t}{i}", "password": "p"} for i in range(5)],
+                                 defaults={**base, "tool_type": t, "price": price})
+    return core
+
+
+async def test_two_types_in_one_message(typed):
+    core = typed
+    r, o, cid = await talk(core, ["بدي 2 مزارع مستوى 50 مخزن 3000 ادوات ارض و 2 مزارع مستوى 50 مخزن 3000 ادوات حظيرة"])
+    assert "ملخص" in r[0] or "جهزت" in r[0]
+    assert o["status"] == "pending_confirmation" and o["quantity"] == 4 and str(o["total"]) == "22.00"   # 2×5 + 2×6
+    card = await core.pool.fetchrow("SELECT content, payload FROM messages WHERE customer_id=$1 AND kind='order_summary' "
+                                    "ORDER BY id DESC LIMIT 1", cid)
+    assert "النوع الأول" in card["content"] and "النوع الثاني" in card["content"] and "أدوات حظيرة" in card["content"]
+    assert [ln["tool_type"] for ln in card["payload"]["lines"]] == ["land", "barn"]
+    assert await core.pool.fetchval("SELECT count(*) FROM farms WHERE status='reserved'") == 0      # nothing before yes
+
+
+async def test_two_types_confirm_reserves_exact_farms(typed):
+    core = typed
+    r, o, cid = await talk(core, ["ابي 2 ادوات ارض و 3 ادوات صومعه مستوى 50", "نعم"])
+    assert o["status"] == "awaiting_payment" and str(o["total"]) == "31.00"   # 2×5 + 3×7
+    rows = await core.pool.fetch("SELECT f.tool_type, count(*) n FROM order_items i JOIN farms f ON f.id=i.farm_id "
+                                 "WHERE i.order_id=$1 GROUP BY 1", o["id"])
+    assert {x["tool_type"]: x["n"] for x in rows} == {"land": 2, "silo": 3}
+
+
+async def test_edit_one_type_recalculates(typed):
+    core = typed
+    r, o, cid = await talk(core, ["2 land tools and 2 barn tools level 50", "خلي الحظيره 4", "احذف الارض", "yes"], "ar")
+    assert "22.00" not in r[1]
+    last = await core.pool.fetch("SELECT total, quantity, status FROM orders WHERE customer_id=$1 ORDER BY id", cid)
+    assert str(last[1]["total"]) == "34.00"      # 2×5 + 4×6 after the change
+    assert last[-1]["status"] == "awaiting_payment" and str(last[-1]["total"]) == "24.00" and last[-1]["quantity"] == 4
+
+
+async def test_edit_button_then_change(typed):
+    from app.services import chat as chat_svc
+    core = typed
+    r, o, cid = await talk(core, ["بدي 2 مزارع مستوى 50 ادوات ارض"])
+    await chat_svc.edit_order(core, await customers.get(core, cid), o["id"])
+    assert (await orders.get_order(core, o["id"]))["status"] == "cancelled"
+    await chat.handle_text(core, await customers.get(core, cid), "خليها 3")
+    o2 = (await orders.customer_orders(core, cid, 1))[0]
+    assert o2["status"] == "pending_confirmation" and o2["quantity"] == 3 and str(o2["total"]) == "15.00"
+
+
+async def test_multi_order_payment_and_delivery(typed):
+    from app.services import payments
+    core = typed
+    r, o, cid = await talk(core, ["ابي 1 ادوات ارض و 1 ادوات حظيره مستوى 50", "اكيد"])
+    res = await payments.submit_proof(core, cid, "db", "uniq-proof-1", image=b"\xff\xd8\xffx", mime="image/jpeg")
+    assert (await orders.get_order(core, o["id"]))["status"] == "payment_review"     # waits for staff, no success yet
+    msgs = " ".join(x["content"] for x in await core.pool.fetch("SELECT content FROM messages WHERE customer_id=$1", cid))
+    assert "Password" not in msgs
+    await payments.approve(core, "admin", res["payment"]["id"])
+    assert (await orders.get_order(core, o["id"]))["status"] == "delivered"

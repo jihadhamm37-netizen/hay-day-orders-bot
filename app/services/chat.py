@@ -163,3 +163,17 @@ async def choose_method(core: Core, customer: dict, order_id: int, method_id: in
     async with lock(customer["id"]):
         o, m = await pay_svc.choose_method(core, customer["id"], order_id, method_id)
         await core.messenger.send_payment_details(o, m)
+
+
+async def edit_order(core: Core, customer: dict, order_id: int) -> None:
+    """'Edit order' button: drop the unconfirmed quote (nothing was reserved) and ask what to change."""
+    cid = customer["id"]
+    async with lock(cid):
+        r = await core.pool.execute("UPDATE orders SET status='cancelled', reason='عدّل العميل الطلب', updated_at=now() "
+                                    "WHERE id=$1 AND customer_id=$2 AND status='pending_confirmation'", order_id, cid)
+        if r.endswith(" 0"):
+            raise StoreError("bad_state", "لا يمكن تعديل هذا الطلب الآن.")
+        st = await rules_svc.load_state(core, cid)
+        await rules_svc.save_state(core, cid, {**st, "expect": "edit"})
+        lang = customer.get("lang") or "ar"
+        await cust_svc.log_message(core, cid, "assistant", rules_svc.r(lang, "edit"))
