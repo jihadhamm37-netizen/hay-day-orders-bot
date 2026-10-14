@@ -16,6 +16,7 @@ import asyncpg
 
 from ..core import Core, StoreError, fmt, row, rows
 from ..security import make_ref
+from . import balance as balance_svc
 from . import farms as farms_svc
 from .system import audit, raise_alert, setting
 
@@ -210,7 +211,8 @@ async def _close(core: Core, order_id: int, status: str, reason: str, actor: str
             raise StoreError("not_found", "الطلب غير موجود.")
         if o["status"] in ("delivered", "cancelled", "rejected"):
             raise StoreError("bad_state", f"الطلب منتهٍ بالفعل ({STATUS_AR[o['status']]}).")
-        if o["status"] == "processing":
+        if o["status"] == "processing" and await conn.fetchval(
+                "SELECT delivering_at > now() - interval '2 minutes' FROM orders WHERE id=$1", order_id):
             raise StoreError("busy", "الطلب قيد التسليم الآن.")
         farm_ids = [r["farm_id"] for r in await conn.fetch(
             "UPDATE order_items SET active=FALSE WHERE order_id=$1 AND active RETURNING farm_id", order_id)]
@@ -219,11 +221,15 @@ async def _close(core: Core, order_id: int, status: str, reason: str, actor: str
                                "AND status='reserved'", farm_ids, "available" if restock else "disabled")
         await conn.execute("UPDATE payments SET status='rejected', reject_reason=$2, reviewed_by=$3, reviewed_at=now() "
                            "WHERE order_id=$1 AND status='pending'", order_id, reason, actor)
+        refunded = await balance_svc.refund_in_tx(conn, dict(o), actor)
         o = await conn.fetchrow("UPDATE orders SET status=$2, reason=$3, updated_at=now() WHERE id=$1 RETURNING *",
                                 order_id, status, reason)
         await audit(conn, actor, f"order.{status}", "order", order_id, {"ref": o["ref"], "reason": reason}, ip)
     if notify and core.messenger:
         await core.messenger.notify_customer(o["customer_id"], f"order_{status}", ref=o["ref"], reason=reason)
+    if refunded and core.messenger:
+        await core.messenger.notify_customer(o["customer_id"], "balance_refunded", ref=o["ref"], amount=fmt(refunded),
+                                             balance=fmt(await balance_svc.get(core, o["customer_id"])))
     return dict(o)
 
 

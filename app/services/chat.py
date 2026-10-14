@@ -6,10 +6,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 
-from ..core import Core, StoreError
+from ..core import Core, StoreError, fmt
 from ..texts import tt
 from . import ai as ai_svc
+from . import balance as balance_svc
 from . import customers as cust_svc
 from . import orders as orders_svc
 from . import payments as pay_svc
@@ -72,7 +74,11 @@ async def do_handoff(core: Core, customer: dict, reason: str, lang: str, tell_cu
 async def after_confirm(core: Core, o: dict) -> None:
     """Order reserved: show payment details (directly when there is only one method)."""
     methods = await pay_svc.list_methods(core, active_only=True, currency=o["currency"])
-    if len(methods) == 1:
+    bal = await balance_svc.get(core, o["customer_id"])
+    can_bal = o["currency"] in balance_svc.BALANCE_CURRENCIES and bal >= o["total"]
+    if can_bal:
+        await core.messenger.send_payment_methods(o, methods, balance=fmt(bal))
+    elif len(methods) == 1:
         o2, m = await pay_svc.choose_method(core, o["customer_id"], o["id"], methods[0]["id"])
         await core.messenger.send_payment_details(o2, m)
         await note(core, o["customer_id"], f"أُرسلت تفاصيل الدفع ({m['name']}) للطلب {o['ref']}: المبلغ {o['total']} "
@@ -98,6 +104,19 @@ async def handle_text(core: Core, customer: dict, text: str) -> None:
                 await core.messenger.notify_customer(cid, "in_review", ref=r["order"]["ref"])
             except StoreError as ex:
                 await core.messenger.send_text(cid, ex.message)
+            return
+        # balance: "كم رصيدي" → show it; "ادفع من الرصيد" → pay the order that waits for payment
+        nt = rules_svc.norm(text)
+        if BAL_RX.search(nt) or BAL_RX.search(rules_svc.strip_vi(nt)):
+            waiting = await core.pool.fetchrow(
+                "SELECT * FROM orders WHERE customer_id=$1 AND status='awaiting_payment' ORDER BY id DESC LIMIT 1", cid)
+            if waiting and (PAY_RX.search(nt) or PAY_RX.search(rules_svc.strip_vi(nt))):
+                try:
+                    await balance_svc.pay_order(core, cid, waiting["id"])
+                except StoreError as ex:
+                    await core.messenger.send_text(cid, ex.message)
+                return
+            await core.messenger.notify_customer(cid, "balance_info", balance=fmt(await balance_svc.get(core, cid)))
             return
         if await maybe_resume_ai(core, cid):
             await note(core, cid, "عاد الرد الآلي تلقائياً (لا رد من الإدارة)")
@@ -186,3 +205,12 @@ async def edit_order(core: Core, customer: dict, order_id: int) -> None:
         await rules_svc.save_state(core, cid, {**st, "expect": "edit"})
         lang = customer.get("lang") or "ar"
         await cust_svc.log_message(core, cid, "assistant", rules_svc.r(lang, "edit"))
+
+
+BAL_RX = re.compile(r"رصيد|\bbalance\b|\bwallet\b|so du|余额", re.I)
+PAY_RX = re.compile(r"ادفع|دفع|سدد|اخصم|خصم|اشتري|\bpay\b|thanh toan|支付|付款|付", re.I)
+
+
+async def pay_with_balance(core: Core, customer: dict, order_id: int) -> dict:
+    async with lock(customer["id"]):
+        return await balance_svc.pay_order(core, customer["id"], order_id)

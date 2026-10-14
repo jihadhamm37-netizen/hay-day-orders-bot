@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..core import Core, StoreError
 from ..services import admins, backup, customers, farms, orders, payments, stats, system
+from ..services import balance as balance_svc
 from .app_api import build_router as build_app_router
 from .auth import (RateLimiter, actor_of, clear_session, client_ip, current_admin, get_core, make_token, read_token,
                    require, set_session)
@@ -352,7 +353,14 @@ def create_app(core: Core) -> FastAPI:
             raise HTTPException(404, "العميل غير موجود.")
         c["messages"] = await customers.history(core, customer_id, 100, before)
         c["orders"] = await orders.list_orders(core, customer_id=customer_id, limit=50)
+        c["balance_log"] = await balance_svc.history(core, customer_id, 30)
         return ok(c)
+
+    @api.post("/balance")
+    async def balance_adjust(request: Request, body: dict = Body(...), admin=Depends(require("payments"))):
+        """Top up (or deduct with a negative amount) the balance of the customer with this access code."""
+        return ok(await balance_svc.adjust(core, actor_of(admin), body.get("code"), body.get("amount"), body.get("note"),
+                                           client_ip(request)))
 
     @api.post("/customers/{customer_id}/message")
     async def customer_message(customer_id: int, request: Request, body: dict = Body(...), admin=Depends(require("chat"))):

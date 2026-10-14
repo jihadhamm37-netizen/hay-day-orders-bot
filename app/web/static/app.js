@@ -350,10 +350,15 @@
         h("div", { class: "stack" },
           h("div", { class: "card" }, h("div", { class: "card-b" }, h("dl", { class: "kv" }, h("dt", null, "الكود"), h("dd", { class: "mono" }, c.access_code || "—"),
             h("dt", null, "الجهاز"), h("dd", null, c.device_label || (c.device_id ? "مربوط" : "لم يُستخدم بعد")),
+            h("dt", null, "الرصيد"), h("dd", null, h("b", { class: "num" }, "$" + money(c.balance || 0))),
             h("dt", null, "اللغة"), h("dd", null, c.lang), h("dt", null, "انضم"), h("dd", null, dt(c.created_at)), h("dt", null, "آخر نشاط"), h("dd", null, dt(c.last_seen_at))))),
           h("div", { class: "card" }, h("div", { class: "card-h" }, h("h3", null, "طلبات العميل")),
             table(["الطلب", "الحالة", "الإجمالي"], c.orders.map((o) => h("tr", { class: "click", onclick: () => (location.hash = "#/order/" + o.id) },
               h("td", { class: "mono" }, o.ref), h("td", null, pill(ORDER, o.status)), h("td", null, cur(o.total, o.currency)))), "لا توجد طلبات")),
+          (c.balance_log || []).length ? h("div", { class: "card" }, h("div", { class: "card-h" }, h("h3", null, "حركات الرصيد")),
+            table(["الحركة", "المبلغ", "بعدها", "التاريخ"], c.balance_log.map((x) => h("tr", null,
+              h("td", null, { topup: "إضافة", deduct: "خصم", order: "دفع طلب", refund: "استرجاع" }[x.kind] || x.kind, x.order_ref ? h("span", { class: "mono small" }, " " + x.order_ref) : null, x.note && !x.order_ref ? h("div", { class: "small muted" }, x.note) : null),
+              h("td", { class: "num" }, (Number(x.delta) > 0 ? "+" : "") + money(x.delta)), h("td", { class: "num" }, money(x.balance_after)), h("td", null, dt(x.created_at)))), "")) : null,
           h("div", { class: "card" }, h("div", { class: "card-h" }, h("h3", null, "ملاحظات داخلية")), h("div", { class: "card-b" }, notes,
             h("button", { class: "btn sm", style: "margin-top:8px", onclick: () => run(() => POST(`/customers/${id}/notes`, { notes: notes.value }), "تم الحفظ") }, "حفظ"))))));
     log.scrollTop = log.scrollHeight;
@@ -625,6 +630,19 @@
     const count = h("input", { type: "number", min: 1, max: 200, value: 1, dir: "ltr", style: "max-width:110px" });
     const notes = h("input", { type: "text", placeholder: "ملاحظة (اختياري)" });
     const created = h("div");
+    const bCode = h("input", { type: "text", placeholder: "HD-XXXXXXXX", dir: "ltr", class: "mono" });
+    const bAmount = h("input", { type: "text", inputmode: "decimal", placeholder: "10 أو ‎-5 للخصم", dir: "ltr", style: "max-width:150px" });
+    const bNote = h("input", { type: "text", placeholder: "ملاحظة (اختياري)" });
+    const bOut = h("div");
+    const topup = async () => {
+      const amt = bAmount.value.trim();
+      if (!bCode.value.trim() || !amt) { toast("اكتب الكود والمبلغ", true); return; }
+      if (!await confirmBox(`${amt.startsWith("-") ? "خصم" : "إضافة"} ${amt.replace("-", "")} $ ${amt.startsWith("-") ? "من" : "إلى"} رصيد ${bCode.value.trim()}؟`)) return;
+      const r = await run(() => POST("/balance", { code: bCode.value.trim(), amount: amt, note: bNote.value }), "تم تحديث الرصيد");
+      if (!r) return;
+      bOut.replaceChildren(h("div", { class: "notice" }, `${r.code}${r.name ? " — " + r.name : ""}: الرصيد الآن `, h("b", { class: "num" }, "$" + r.balance)));
+      bAmount.value = ""; bNote.value = ""; load();
+    };
     const create = async () => {
       const r = await run(() => POST("/codes", { name: name.value, count: count.value, notes: notes.value }), "تم إنشاء الأكواد");
       const text = r.map((c) => c.access_code + (c.first_name ? " — " + c.first_name : "")).join("\n");
@@ -634,9 +652,10 @@
     };
     const load = async () => {
       const items = await GET("/customers" + q({ q: search.value.trim(), page }));
-      body.replaceChildren(table(["العميل", "الكود", "الجهاز", "الحالة", "المشتريات", "آخر نشاط", ""], items.map((c) => h("tr", null,
+      body.replaceChildren(table(["العميل", "الكود", "الرصيد", "الجهاز", "الحالة", "المشتريات", "آخر نشاط", ""], items.map((c) => h("tr", null,
         h("td", null, h("a", { href: "#/chat/" + c.id }, c.first_name || "عميل #" + c.id), c.notes ? h("div", { class: "small muted" }, c.notes) : null),
         h("td", null, h("span", { class: "mono" }, c.access_code || "—"), c.access_code ? h("button", { class: "btn sm", style: "margin-inline-start:6px", onclick: () => { navigator.clipboard.writeText(c.access_code); toast("تم النسخ"); } }, "نسخ") : null),
+        h("td", null, h("b", { class: "num" }, "$" + money(c.balance || 0)), can("payments") && c.access_code ? h("button", { class: "btn sm", style: "margin-inline-start:6px", onclick: () => { bCode.value = c.access_code; bAmount.focus(); bAmount.scrollIntoView({ block: "center" }); } }, "شحن") : null),
         h("td", { class: "small" }, c.device_id ? (c.device_label || "مربوط") : h("span", { class: "muted" }, "لم يُستخدم")),
         h("td", null, !c.code_active ? h("span", { class: "pill danger" }, "موقوف") : c.device_id ? h("span", { class: "pill ok" }, "مفعّل") : h("span", { class: "pill" }, "جديد")),
         h("td", null, `${c.delivered_orders} · `, h("span", { class: "num" }, money(c.spent))),
@@ -652,6 +671,10 @@
       can("customers") ? h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "إنشاء أكواد")), h("div", { class: "card-b stack" },
         h("div", { class: "form-grid" }, field("الاسم", name), field("العدد", count), field("ملاحظة", notes)),
         h("div", null, h("button", { class: "btn primary", onclick: create }, "إنشاء")), created)) : null,
+      can("payments") ? h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "💰 رصيد العميل")), h("div", { class: "card-b stack" },
+        h("div", { class: "small muted" }, "أضف رصيدًا لعميل عبر كود الدخول (اكتب مبلغًا سالبًا للخصم). يظهر الرصيد للعميل أعلى التطبيق ويستطيع الدفع منه."),
+        h("div", { class: "form-grid" }, field("كود العميل", bCode), field("المبلغ $", bAmount), field("ملاحظة", bNote)),
+        h("div", null, h("button", { class: "btn primary", onclick: topup }, "تحديث الرصيد")), bOut)) : null,
       h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "العملاء والأكواد"), h("span", { style: "flex:1" }), search), body));
     await load();
   };

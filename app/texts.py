@@ -70,6 +70,31 @@ T: dict[str, dict[str, str]] = {
 }
 
 
+T.update({
+    "balance_added": {"ar": "تمت إضافة ⁦${amount}⁩ إلى رصيدك 💰 رصيدك المتوفر الآن: ⁦${balance}⁩",
+                      "en": "⁦${amount}⁩ was added to your balance 💰 Available balance: ⁦${balance}⁩",
+                      "vi": "Đã cộng ⁦${amount}⁩ vào số dư 💰 Số dư hiện có: ⁦${balance}⁩",
+                      "zh": "已向您的余额充值 ⁦${amount}⁩ 💰 当前可用余额：⁦${balance}⁩"},
+    "balance_deducted": {"ar": "تم خصم ⁦${amount}⁩ من رصيدك. رصيدك المتوفر الآن: ⁦${balance}⁩",
+                         "en": "⁦${amount}⁩ was deducted from your balance. Available balance: ⁦${balance}⁩",
+                         "vi": "Đã trừ ⁦${amount}⁩ khỏi số dư. Số dư hiện có: ⁦${balance}⁩",
+                         "zh": "已从您的余额扣除 ⁦${amount}⁩。当前可用余额：⁦${balance}⁩"},
+    "paid_from_balance": {"ar": "تم دفع الطلب {ref} من رصيدك (⁦${amount}⁩) ✅ طلبك الآن قيد التجهيز، وسنرسل لك بيانات المزارع هنا فور تسليمها. رصيدك المتبقي: ⁦${balance}⁩",
+                          "en": "Order {ref} paid from your balance (⁦${amount}⁩) ✅ It's being prepared; your farm details will appear here once delivered. Remaining balance: ⁦${balance}⁩",
+                          "vi": "Đơn {ref} đã thanh toán bằng số dư (⁦${amount}⁩) ✅ Đơn đang được chuẩn bị. Số dư còn lại: ⁦${balance}⁩",
+                          "zh": "订单 {ref} 已用余额支付（⁦${amount}⁩）✅ 正在为您准备，交付后农场信息会显示在这里。剩余余额：⁦${balance}⁩"},
+    "balance_refunded": {"ar": "أُعيد مبلغ ⁦${amount}⁩ إلى رصيدك بسبب إلغاء الطلب {ref}. رصيدك المتوفر الآن: ⁦${balance}⁩",
+                         "en": "⁦${amount}⁩ was returned to your balance because order {ref} was cancelled. Available balance: ⁦${balance}⁩",
+                         "vi": "Đã hoàn ⁦${amount}⁩ vào số dư do đơn {ref} bị hủy. Số dư hiện có: ⁦${balance}⁩",
+                         "zh": "因订单 {ref} 取消，⁦${amount}⁩ 已退回余额。当前可用余额：⁦${balance}⁩"},
+    "balance_info": {"ar": "رصيدك المتوفر: ⁦${balance}⁩ 💰", "en": "Your available balance: ⁦${balance}⁩ 💰",
+                     "vi": "Số dư hiện có của bạn: ⁦${balance}⁩ 💰", "zh": "您的可用余额：⁦${balance}⁩ 💰"},
+    "balance_can_pay": {"ar": "\n\nرصيدك ⁦${balance}⁩ يكفي لهذا الطلب — اضغط «الدفع من الرصيد» أو اكتب «ادفع من الرصيد».",
+                        "en": "\n\nYour balance (⁦${balance}⁩) covers this order — tap “Pay from balance” or write “pay from balance”.",
+                        "vi": "\n\nSố dư (⁦${balance}⁩) đủ cho đơn này — bấm “Thanh toán bằng số dư”.",
+                        "zh": "\n\n您的余额（⁦${balance}⁩）足够支付此订单——点击“用余额支付”或回复“用余额支付”。"},
+})
+
 def tt(lang: str | None, key: str, **kw) -> str:
     e = T[key]
     s = e.get(lang or "ar") or e.get("en") or e["ar"]

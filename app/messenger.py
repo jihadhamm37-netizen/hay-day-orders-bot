@@ -53,14 +53,17 @@ class AppMessenger:
             "tool_type": first["tool_type"], "quantity": order["quantity"], "unit_price": first["unit_price"],
             "total": fmt(order["total"]), "currency": order["currency"], "minutes": int(minutes)})
 
-    async def send_payment_methods(self, order: dict, methods: list[dict]) -> None:
+    async def send_payment_methods(self, order: dict, methods: list[dict], balance: str | None = None) -> None:
         lang = await self._lang(order["customer_id"])
-        if not methods:
+        if not methods and not balance:
             await self._post(order["customer_id"], tt(lang, "no_methods"))
             await self.notify_admins(f"لا توجد وسيلة دفع مفعّلة بعملة {order['currency']} للطلب {order['ref']}.", perm="methods")
             return
         text = tt(lang, "confirmed", ref=order["ref"], until="")
+        if balance:
+            text += tt(lang, "balance_can_pay", balance=balance)
         await self._post(order["customer_id"], text, "methods", {
+            "balance": balance, "total": fmt(order["total"]), "currency": order["currency"],
             "order_id": order["id"], "ref": order["ref"], "reserved_until": order["reserved_until"].isoformat()
             if order.get("reserved_until") else None, "methods": [{"id": m["id"], "name": m["name"]} for m in methods]})
 

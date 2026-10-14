@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, UploadFile
 
 from ..core import Core, StoreError, fmt
+from ..services import balance as balance_svc
 from ..services import chat
 from ..services import customers as cust_svc
 from ..services import orders as orders_svc
@@ -61,7 +62,7 @@ def build_router(ok) -> APIRouter:
     async def me(c: dict = Depends(current_customer), core: Core = Depends(get_core)):
         await chat.welcome(core, c)
         return ok({"id": c["id"], "name": c["first_name"], "code": c["access_code"], "lang": c["lang"],
-                   "device": c["device_label"]})
+                   "device": c["device_label"], "balance": fmt(await balance_svc.get(core, c["id"]))})
 
     @r.post("/lang")
     async def set_lang(body: dict = Body(...), c: dict = Depends(current_customer), core: Core = Depends(get_core)):
@@ -79,7 +80,8 @@ def build_router(ok) -> APIRouter:
         else:
             rows = list(reversed(await core.pool.fetch(
                 f"SELECT * FROM messages WHERE customer_id=$1 AND {VISIBLE} ORDER BY id DESC LIMIT 120", c["id"])))
-        return ok({"messages": [_msg(dict(m)) for m in rows], "states": await _order_states(core, c["id"])})
+        return ok({"messages": [_msg(dict(m)) for m in rows], "states": await _order_states(core, c["id"]),
+                   "balance": fmt(await balance_svc.get(core, c["id"]))})
 
     @r.post("/messages")
     async def send(body: dict = Body(...), c: dict = Depends(current_customer), core: Core = Depends(get_core)):
@@ -127,6 +129,18 @@ def build_router(ok) -> APIRouter:
                      core: Core = Depends(get_core)):
         await chat.choose_method(core, c, order_id, int(body.get("method_id") or 0))
         return ok()
+
+    @r.post("/orders/{order_id}/pay-balance")
+    async def pay_balance(order_id: int, c: dict = Depends(current_customer), core: Core = Depends(get_core)):
+        o = await chat.pay_with_balance(core, c, order_id)
+        return ok({"status": o["status"], "balance": fmt(await balance_svc.get(core, c["id"]))})
+
+    @r.get("/balance")
+    async def balance(c: dict = Depends(current_customer), core: Core = Depends(get_core)):
+        items = await balance_svc.history(core, c["id"], 30)
+        return ok({"balance": fmt(await balance_svc.get(core, c["id"])),
+                   "items": [{"delta": fmt(x["delta"]), "kind": x["kind"], "ref": x["order_ref"],
+                              "at": x["created_at"].isoformat()} for x in items]})
 
     @r.get("/orders")
     async def my_orders(c: dict = Depends(current_customer), core: Core = Depends(get_core)):
