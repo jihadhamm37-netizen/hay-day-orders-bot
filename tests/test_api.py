@@ -99,6 +99,9 @@ async def test_payment_review_via_api(core):
     r1 = await c.post(f"/api/payments/{p['id']}/approve", {})
     r2 = await c.post(f"/api/payments/{p['id']}/approve", {})
     assert r1.status_code == 200 and r2.status_code == 400
+    assert (await c.get(f"/api/orders/{o['id']}")).json()["data"]["status"] == "processing"
+    d1 = await c.post(f"/api/orders/{o['id']}/redeliver", {})
+    assert d1.json()["data"]["delivered"] is True
     od = (await c.get(f"/api/orders/{o['id']}")).json()["data"]
     assert od["status"] == "delivered" and "token_enc" not in str(od)
     audit = (await c.get("/api/audit?action=payment.")).json()["data"]

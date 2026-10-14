@@ -172,3 +172,4 @@ button { cursor: pointer; }
 .line-sub { font-size: 13px; color: var(--muted); }
 .line-calc { font-size: 14px; margin-top: 2px; text-align: end; }
 .ticket .ask { padding: 0 14px; font-weight: 600; }
+.ticket .creds { margin-top: 8px; font-size: 13px; max-height: 260px; overflow: auto; }

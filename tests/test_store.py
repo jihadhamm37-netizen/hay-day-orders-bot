@@ -165,6 +165,11 @@ async def test_full_sale_approve_delivers(core):
     assert (await orders.get_order(core, o["id"]))["status"] == "payment_review"
     assert core.messenger.delivered == []          # nothing sensitive before payment approval
     await payments.approve(core, "admin", p["id"])
+    o1 = await orders.get_order(core, o["id"])
+    assert o1["status"] == "processing" and core.messenger.delivered == []      # paid → being prepared, nothing sent
+    assert core.messenger.customer_msgs[-1][1] == "payment_confirmed"
+    assert await orders.deliver(core, o["id"], "admin")                          # staff press "deliver"
+    assert not await orders.deliver(core, o["id"], "admin")                      # second press does nothing
     o2 = await orders.get_order(core, o["id"])
     assert o2["status"] == "delivered" and o2["delivered_at"]
     assert sorted(t for _, t, _ in core.messenger.delivered) == ["TOK100-0", "TOK100-1"]
@@ -182,9 +187,11 @@ async def test_full_sale_approve_delivers(core):
 async def test_double_approve_race(core):
     await make_customer(core, 1)
     await add_farms(core, 1)
-    _, p = await paid_flow(core, 1)
+    o, p = await paid_flow(core, 1)
     res = await asyncio.gather(*[payments.approve(core, "a", p["id"]) for _ in range(5)], return_exceptions=True)
     assert sum(not isinstance(r, Exception) for r in res) == 1
+    res = await asyncio.gather(*[orders.deliver(core, o["id"], "a") for _ in range(5)])
+    assert sum(res) == 1
     assert len(core.messenger.delivered) == 1
 
 
@@ -217,8 +224,8 @@ async def test_reject_lets_customer_retry_then_approve(core):
     assert (await orders.get_order(core, o["id"]))["status"] == "awaiting_payment"
     assert core.messenger.customer_msgs[-1][1] == "payment_rejected"
     r = await payments.submit_proof(core, 1, "file-good", "good")
-    p2 = await payments.submit_txid(core, 1, r["payment"]["id"], "TXGOOD123")
-    await payments.approve(core, "admin", p2["id"])
+    await payments.approve(core, "admin", r["payment"]["id"])
+    await orders.deliver(core, o["id"], "admin")
     assert (await orders.get_order(core, o["id"]))["status"] == "delivered"
 
 
@@ -248,6 +255,7 @@ async def test_failed_delivery_is_kept_and_redelivered(core):
     o, p = await paid_flow(core, 1)
     core.messenger.fail_delivery = True
     await payments.approve(core, "admin", p["id"])
+    assert not await orders.deliver(core, o["id"], "admin")
     o2 = await orders.get_order(core, o["id"])
     assert o2["status"] == "processing" and o2["failure_reason"]
     assert (await farm_status(core, [fs[0]["id"]]))[fs[0]["id"]] == "reserved"   # never released to someone else
@@ -256,17 +264,31 @@ async def test_failed_delivery_is_kept_and_redelivered(core):
     assert (await orders.get_order(core, o["id"]))["status"] == "delivered"
 
 
-async def test_restart_resumes_interrupted_delivery(core):
-    """Process died after payment was confirmed: the maintenance job delivers it."""
+async def test_paid_order_waits_for_staff_delivery(core):
+    """Restarts and the maintenance job never send credentials on their own: staff deliver."""
     await make_customer(core, 1)
     await add_farms(core, 1)
     o, p = await paid_flow(core, 1)
-    async with core.pool.acquire() as conn:
-        await conn.execute("UPDATE payments SET status='approved' WHERE id=$1", p["id"])
-        await conn.execute("UPDATE orders SET status='payment_confirmed', updated_at=now() - interval '5 minutes' WHERE id=$1", o["id"])
+    await payments.approve(core, "admin", p["id"])
+    await core.pool.execute("UPDATE orders SET updated_at=now() - interval '1 hour' WHERE id=$1", o["id"])
     await orders.maintenance(core)
-    assert (await orders.get_order(core, o["id"]))["status"] == "delivered"
-    assert len(core.messenger.delivered) == 1
+    assert (await orders.get_order(core, o["id"]))["status"] == "processing" and core.messenger.delivered == []
+    assert await orders.redeliver(core, "admin", o["id"])
+    assert (await orders.get_order(core, o["id"]))["status"] == "delivered" and len(core.messenger.delivered) == 1
+
+
+async def test_typed_transaction_number_is_a_proof(core):
+    await make_customer(core, 1)
+    await add_farms(core, 2)
+    from tests.conftest import offer_code, method_id
+    o = await orders.prepare(core, 1, await offer_code(core), 1)
+    await orders.confirm(core, 1, o["id"])
+    await payments.choose_method(core, 1, o["id"], await method_id(core))
+    assert payments.looks_like_txid("رقم العملية: 403829110293847") == "403829110293847"
+    assert payments.looks_like_txid("بدي 3 مزارع") is None
+    r = await payments.submit_text_proof(core, 1, "403829110293847")
+    assert r["payment"]["txid"] == "403829110293847"
+    assert (await orders.get_order(core, o["id"]))["status"] == "payment_review"
 
 
 async def test_admin_cancel_after_payment_confirmed_releases(core):
@@ -283,8 +305,9 @@ async def test_admin_cancel_after_payment_confirmed_releases(core):
 async def test_sold_farm_cannot_be_edited_or_deleted(core):
     await make_customer(core, 1)
     fs = await add_farms(core, 1)
-    _, p = await paid_flow(core, 1)
+    o, p = await paid_flow(core, 1)
     await payments.approve(core, "admin", p["id"])
+    await orders.deliver(core, o["id"], "admin")
     with pytest.raises(StoreError):
         await farms.update_farm(core, "t", fs[0]["id"], {"price": "1"})
     with pytest.raises(StoreError):

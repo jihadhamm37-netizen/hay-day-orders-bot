@@ -166,6 +166,10 @@ async def test_full_sale_in_app(env):
     assert (await user.get(f"/orders/{oid}/farms")).status_code == 400
     await payments.approve(core, "admin", pid)
     data = await user.messages()
+    assert not any(m["kind"] == "delivered" for m in data["messages"])          # being prepared
+    assert (await user.get(f"/orders/{oid}/farms")).status_code == 400
+    await orders.deliver(core, oid, "admin")
+    data = await user.messages()
     assert any(m["kind"] == "delivered" for m in data["messages"])
     farms = (await user.get(f"/orders/{oid}/farms")).json()["data"]["farms"]
     assert len(farms) == 5 and farms[0]["id"].startswith("TOK50")

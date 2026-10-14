@@ -66,7 +66,7 @@
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
 
   const ORDER = { pending_confirmation: ["بانتظار تأكيد الطلب", ""], awaiting_payment: ["بانتظار الدفع", "warn"], proof_received: ["إثبات الدفع مستلم", "info"],
-    payment_review: ["الدفع قيد المراجعة", "warn"], payment_confirmed: ["الدفع مؤكد", "info"], processing: ["قيد التنفيذ", "info"],
+    payment_review: ["الدفع قيد المراجعة", "warn"], payment_confirmed: ["الدفع مؤكد", "info"], processing: ["قيد التجهيز", "warn"],
     delivered: ["تم التسليم", "ok"], cancelled: ["ملغي", ""], rejected: ["مرفوض", "danger"] };
   const PAY = { pending: ["بانتظار المراجعة", "warn"], approved: ["مقبول", "ok"], rejected: ["مرفوض", "danger"] };
   const FARM = { available: ["متوفرة", "ok"], reserved: ["محجوزة", "warn"], sold: ["مباعة", "info"], disabled: ["معطلة", ""] };
@@ -274,6 +274,7 @@
         kpi("آخر 30 يوماً", money(usdt.month), "USDT"),
         kpi("دفعات بانتظار المراجعة", s.pending_payments, "", s.pending_payments ? "warn" : ""),
         kpi("بانتظار الدفع", (st.awaiting_payment || 0), "مزارع محجوزة مؤقتاً"),
+        kpi("قيد التجهيز", (st.processing || 0), "مدفوعة — بانتظار التسليم", st.processing ? "warn" : ""),
         kpi("محادثات مع الإدارة", s.customers.taken_over, "الرد الآلي متوقف لها", s.customers.taken_over ? "warn" : ""),
         kpi("المخزون المتوفر", s.stock.available, `محجوز ${s.stock.reserved} · مباع ${s.stock.sold}`),
         kpi("العملاء", s.customers.total, `نشطون 24 ساعة: ${s.customers.active_24h} · جدد اليوم: ${s.customers.new_today}`)),
@@ -377,7 +378,7 @@
     };
     search.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
     renderTabs();
-    mainEl.replaceChildren(h("div", { class: "notice warn" }, "لا توافق على أي دفعة قبل التأكد من وصول المبلغ فعلياً في حسابك ومطابقة المبلغ ورقم العملية. عند القبول تُسلَّم المزارع للعميل تلقائياً."),
+    mainEl.replaceChildren(h("div", { class: "notice warn" }, "لا توافق على أي دفعة قبل التأكد من وصول المبلغ فعلياً في حسابك ومطابقة المبلغ ورقم العملية. بعد التأكيد ينتقل الطلب إلى «قيد التجهيز» ولا تُرسل البيانات حتى تضغط «تسليم الطلب» من صفحة الطلب."),
       h("div", { class: "card" }, h("div", { class: "card-h" }, tabs, h("span", { style: "flex:1" }), search), body));
     await load();
   };
@@ -387,8 +388,8 @@
     const closeOrder = h("input", { type: "checkbox" });
     const quick = ["لم يصل المبلغ", "المبلغ لا يطابق الطلب", "الإثبات غير واضح أو غير صحيح", "رقم العملية غير صحيح"];
     const acts = p.status === "pending" ? h("div", { class: "stack" },
-      h("button", { class: "btn primary", onclick: async () => { if (!(await confirmBox(`تأكيد وصول ${money(p.amount)} ${p.currency}؟ سيتم تسليم المزارع للعميل فوراً.`))) return;
-        await run(() => POST(`/payments/${id}/approve`), "تم قبول الدفع وتسليم الطلب"); m.close(); reload(); refreshCounts(); } }, "قبول الدفع وتسليم الطلب"),
+      h("button", { class: "btn primary", onclick: async () => { if (!(await confirmBox(`تأكيد وصول ${money(p.amount)} ${p.currency} فعلياً؟ سينتقل الطلب إلى «قيد التجهيز»، ثم تسلّمه من صفحة الطلب.`))) return;
+        await run(() => POST(`/payments/${id}/approve`), "تم تأكيد الدفع — الطلب قيد التجهيز"); m.close(); reload(); refreshCounts(); } }, "تأكيد وصول الدفع (الطلب ينتقل إلى قيد التجهيز)"),
       h("div", { class: "card", style: "padding:12px" }, field("سبب الرفض", reason), h("div", { class: "btn-row", style: "margin-bottom:10px" }, quick.map((x) => h("button", { class: "btn sm", onclick: () => { reason.value = x; } }, x))),
         h("label", { class: "switch f" }, closeOrder, "رفض الطلب بالكامل وإلغاء الحجز (بدلاً من السماح بإرسال إثبات جديد)"),
         h("button", { class: "btn danger", onclick: async () => { await run(() => POST(`/payments/${id}/reject`, { reason: reason.value, close_order: closeOrder.checked }), "تم الرفض"); m.close(); reload(); refreshCounts(); } }, "رفض"))) : null;
@@ -436,7 +437,7 @@
     }
     if (["payment_confirmed", "processing", "delivered"].includes(o.status)) {
       acts.append(h("button", { class: "btn", onclick: async () => { const r = await run(() => POST(`/orders/${id}/redeliver`)); toast(r.delivered ? "تم إرسال البيانات" : "فشل الإرسال", !r.delivered); ROUTES.order(id); } },
-        o.status === "delivered" ? "إعادة إرسال البيانات للعميل" : "تسليم / إعادة محاولة التسليم"));
+        o.status === "delivered" ? "إعادة عرض البيانات للعميل" : "تسليم الطلب للعميل"));
     }
     const msg = h("input", { type: "text", placeholder: "رسالة مخصصة للعميل (اختياري)" });
     acts.append(h("button", { class: "btn", onclick: async () => { await run(() => POST(`/orders/${id}/notify`, { text: msg.value }), "تم إرسال الإشعار"); msg.value = ""; } }, "إرسال إشعار بالحالة للعميل"));

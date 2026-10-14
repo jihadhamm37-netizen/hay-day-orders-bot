@@ -27,7 +27,7 @@ STATUS_AR = {
     "proof_received": "إثبات الدفع مستلم",
     "payment_review": "الدفع قيد المراجعة",
     "payment_confirmed": "الدفع مؤكد",
-    "processing": "الطلب قيد التنفيذ",
+    "processing": "الطلب قيد التجهيز",
     "delivered": "تم التسليم",
     "cancelled": "الطلب ملغي",
     "rejected": "الطلب مرفوض",
@@ -38,16 +38,16 @@ STATUS_EN = {
     "proof_received": "Payment proof received",
     "payment_review": "Payment under review",
     "payment_confirmed": "Payment confirmed",
-    "processing": "Being processed",
+    "processing": "Being prepared",
     "delivered": "Delivered",
     "cancelled": "Cancelled",
     "rejected": "Rejected",
 }
 STATUS_VI = {"pending_confirmation": "Chờ bạn xác nhận", "awaiting_payment": "Chờ thanh toán", "proof_received": "Đã nhận bằng chứng",
-             "payment_review": "Đang kiểm tra thanh toán", "payment_confirmed": "Đã xác nhận thanh toán", "processing": "Đang xử lý",
+             "payment_review": "Đang kiểm tra thanh toán", "payment_confirmed": "Đã xác nhận thanh toán", "processing": "Đang chuẩn bị",
              "delivered": "Đã giao", "cancelled": "Đã hủy", "rejected": "Bị từ chối"}
 STATUS_ZH = {"pending_confirmation": "待您确认", "awaiting_payment": "待付款", "proof_received": "已收到凭证", "payment_review": "付款审核中",
-             "payment_confirmed": "付款已确认", "processing": "处理中", "delivered": "已交付", "cancelled": "已取消", "rejected": "已拒绝"}
+             "payment_confirmed": "付款已确认", "processing": "准备中", "delivered": "已交付", "cancelled": "已取消", "rejected": "已拒绝"}
 OPEN = ("pending_confirmation", "awaiting_payment", "proof_received", "payment_review", "payment_confirmed", "processing")
 PENDING_TTL_MIN = 30
 
@@ -241,14 +241,14 @@ async def admin_reject(core: Core, actor: str, order_id: int, reason: str, ip: s
 
 # ---------------------------------------------------------------- delivery
 async def deliver(core: Core, order_id: int, actor: str = "system") -> bool:
-    """payment_confirmed → processing → delivered. Credentials leave the DB only here, only after payment."""
+    """Staff pressed "deliver" on a paid order (processing = being prepared) → delivered.
+    Credentials leave the DB only here, only after payment, and only once at a time (delivering_at guard)."""
     o = await core.pool.fetchrow(
-        "UPDATE orders SET status='processing', updated_at=now() WHERE id=$1 AND status='payment_confirmed' RETURNING *",
-        order_id)
+        "UPDATE orders SET status='processing', delivering_at=now(), updated_at=now() WHERE id=$1 "
+        "AND status IN ('payment_confirmed','processing') "
+        "AND (delivering_at IS NULL OR delivering_at < now() - interval '2 minutes') RETURNING *", order_id)
     if not o:
-        o = await core.pool.fetchrow("SELECT * FROM orders WHERE id=$1 AND status='processing'", order_id)
-        if not o:
-            return False
+        return False
     items = await core.pool.fetch(
         "SELECT f.id, f.token_enc, f.password_enc FROM order_items i JOIN farms f ON f.id=i.farm_id "
         "WHERE i.order_id=$1 AND i.active ORDER BY f.id", order_id)
@@ -259,14 +259,14 @@ async def deliver(core: Core, order_id: int, actor: str = "system") -> bool:
         await core.messenger.deliver_farms(dict(o), creds)
     except Exception as e:
         log.warning("delivery failed for %s: %s", o["ref"], e)
-        await core.pool.execute("UPDATE orders SET failure_reason=$2, updated_at=now() WHERE id=$1",
+        await core.pool.execute("UPDATE orders SET failure_reason=$2, delivering_at=NULL, updated_at=now() WHERE id=$1",
                                 order_id, f"فشل التسليم: {type(e).__name__}: {str(e)[:200]}")
         await raise_alert(core, "error", "delivery_failed",
                           f"تعذر تسليم الطلب {o['ref']} للعميل {o['customer_id']}. الدفع مؤكد والمزارع محجوزة — "
                           "أعد الإرسال من لوحة التحكم.", "order", order_id, perm="orders")
         return False
     async with core.pool.acquire() as conn, conn.transaction():
-        await conn.execute("UPDATE orders SET status='delivered', delivered_at=now(), failure_reason=NULL, "
+        await conn.execute("UPDATE orders SET status='delivered', delivered_at=now(), failure_reason=NULL, delivering_at=NULL, "
                            "updated_at=now() WHERE id=$1 AND status='processing'", order_id)
         await conn.execute("UPDATE farms SET status='sold', sold_at=now(), updated_at=now() "
                            "WHERE id = ANY($1::bigint[]) AND status='reserved'", [r["id"] for r in items])
@@ -275,26 +275,26 @@ async def deliver(core: Core, order_id: int, actor: str = "system") -> bool:
         await core.messenger.notify_admins(
             f"<b>تم تسليم طلب</b>\nالطلب: <code>{o['ref']}</code>\nالعميل: <code>{o['customer_id']}</code>\n"
             f"الإجمالي: {fmt(o['total'])} {o['currency']}", perm="orders")
-    await farms_svc.check_low_stock(core, o["offer"])
+    for ln in order_lines(dict(o)):
+        await farms_svc.check_low_stock(core, ln["offer"])
     return True
 
 
 async def redeliver(core: Core, actor: str, order_id: int) -> bool:
-    o = await core.pool.fetchrow("SELECT status FROM orders WHERE id=$1", order_id)
+    """Deliver a paid order, or show the delivery again to a customer who already received it."""
+    o = await core.pool.fetchrow("SELECT * FROM orders WHERE id=$1", order_id)
     if not o:
         raise StoreError("not_found", "الطلب غير موجود.")
     if o["status"] == "delivered":
-        # resend the same credentials (customer lost the message)
-        await core.pool.execute("UPDATE orders SET status='processing' WHERE id=$1 AND status='delivered'", order_id)
-        items_sold = True
-    elif o["status"] in ("processing", "payment_confirmed"):
-        items_sold = False
-    else:
-        raise StoreError("bad_state", "لا يمكن إرسال بيانات طلب لم يُدفع.")
-    ok = await deliver(core, order_id, actor)
-    if not ok and items_sold:
-        await core.pool.execute("UPDATE orders SET status='delivered' WHERE id=$1 AND status='processing'", order_id)
-    return ok
+        items = await core.pool.fetch("SELECT farm_id FROM order_items WHERE order_id=$1 AND active", order_id)
+        if core.messenger:
+            await core.messenger.deliver_farms(dict(o), [(dict(o), "", "") for _ in items])
+        async with core.pool.acquire() as conn:
+            await audit(conn, actor, "order.redeliver", "order", order_id, {"ref": o["ref"]})
+        return True
+    if o["status"] not in ("processing", "payment_confirmed"):
+        raise StoreError("bad_state", "لا يمكن تسليم طلب لم يُدفع.")
+    return await deliver(core, order_id, actor)
 
 
 # ------------------------------------------------------------- maintenance
@@ -312,10 +312,7 @@ async def maintenance(core: Core) -> dict:
             n += 1
         except StoreError:
             pass
-    # retry deliveries that failed or were interrupted (restart-safe)
-    for r in await core.pool.fetch("SELECT id FROM orders WHERE status IN ('payment_confirmed','processing') "
-                                   "AND updated_at < now() - interval '2 minutes' AND failure_reason IS NULL"):
-        await deliver(core, r["id"])
+    # paid orders wait in "processing" until staff deliver them from the panel (never automatic)
     return {"expired_reservations": n}
 
 

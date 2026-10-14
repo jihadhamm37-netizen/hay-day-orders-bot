@@ -153,6 +153,38 @@ async def submit_proof(core: Core, customer_id: int, file_id: str, file_unique_i
     return result
 
 
+TXID_TEXT = re.compile(r"^\s*(?:رقم\s*(?:ال)?(?:عملي[ةه]|معامل[ةه]|تحويل|طلب)|order\s*id|txid|tx\s*id|transaction(?:\s*id)?|"
+                       r"mã giao dịch|交易(?:编号|号)?)?\s*[:#：]?\s*([A-Za-z0-9][A-Za-z0-9_\-]{7,63})\s*$", re.I)
+
+
+def looks_like_txid(text: str) -> str | None:
+    m = TXID_TEXT.match((text or "").translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")))
+    if m and sum(c.isdigit() for c in m.group(1)) >= 6:
+        return m.group(1)
+    return None
+
+
+async def submit_text_proof(core: Core, customer_id: int, txid: str) -> dict:
+    """The customer typed the transaction number instead of sending a screenshot: same review flow."""
+    o = await awaiting_proof_order(core, customer_id)
+    if not o:
+        raise StoreError("no_order", "لا يوجد طلب بانتظار الدفع.")
+    async with core.pool.acquire() as conn:
+        try:
+            async with conn.transaction():
+                upd = await conn.fetchrow("UPDATE orders SET status='payment_review', updated_at=now() WHERE id=$1 "
+                                          "AND status='awaiting_payment' RETURNING *", o["id"])
+                if not upd:
+                    raise StoreError("bad_state", "تم استلام إثبات لهذا الطلب مسبقاً.")
+                p = await conn.fetchrow(
+                    "INSERT INTO payments(order_id, method_id, amount, currency, txid) VALUES($1,$2,$3,$4,$5) RETURNING " + P_COLS,
+                    o["id"], o["payment_method_id"], o["total"], o["currency"], txid.strip())
+        except asyncpg.UniqueViolationError:
+            raise StoreError("proof_reused", "رقم العملية هذا مستخدم مسبقاً في طلب آخر.")
+    await _notify_review(core, p["id"])
+    return {"order": dict(upd), "payment": dict(p)}
+
+
 async def submit_txid(core: Core, customer_id: int, payment_id: int, txid: str) -> dict:
     txid = (txid or "").strip()
     if not TXID_RE.match(txid):
@@ -194,7 +226,7 @@ async def approve(core: Core, actor: str, payment_id: int, ip: str | None = None
         if not p:
             raise StoreError("already", "تمت مراجعة هذا الدفع مسبقاً.")
         o = await conn.fetchrow(
-            "UPDATE orders SET status='payment_confirmed', paid_at=now(), updated_at=now() WHERE id=$1 "
+            "UPDATE orders SET status='processing', paid_at=now(), updated_at=now() WHERE id=$1 "
             "AND status IN ('proof_received','payment_review','awaiting_payment') RETURNING *", p["order_id"])
         if not o:
             raise StoreError("bad_state", "الطلب لم يعد بانتظار الدفع (ربما أُلغي).")
@@ -203,7 +235,9 @@ async def approve(core: Core, actor: str, payment_id: int, ip: str | None = None
                     {"order": o["ref"], "amount": p["amount"], "currency": p["currency"], "txid": p["txid"]}, ip)
     if core.messenger:
         await core.messenger.notify_customer(o["customer_id"], "payment_confirmed", ref=o["ref"])
-    await orders_svc.deliver(core, o["id"], actor)
+        await core.messenger.notify_admins(
+            f"دفع مؤكد — الطلب {o['ref']} قيد التجهيز. جهّز الحسابات ثم اضغط «تسليم الطلب» من صفحة الطلب في اللوحة.",
+            perm="orders")
     return dict(p)
 
 

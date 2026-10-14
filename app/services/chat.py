@@ -90,6 +90,15 @@ async def handle_text(core: Core, customer: dict, text: str) -> None:
     lang = rules_svc.reply_lang(text, customer.get("lang"))   # the app language stays what the customer chose
     async with lock(cid):
         await cust_svc.log_message(core, cid, "user", text)
+        # a transaction number typed instead of a screenshot counts as the payment proof
+        txid = pay_svc.looks_like_txid(text)
+        if txid and await pay_svc.awaiting_proof_order(core, cid):
+            try:
+                r = await pay_svc.submit_text_proof(core, cid, txid)
+                await core.messenger.notify_customer(cid, "in_review", ref=r["order"]["ref"])
+            except StoreError as ex:
+                await core.messenger.send_text(cid, ex.message)
+            return
         if await maybe_resume_ai(core, cid):
             await note(core, cid, "عاد الرد الآلي تلقائياً (لا رد من الإدارة)")
         fresh = await cust_svc.get(core, cid)

@@ -58,7 +58,7 @@ def _rx(*parts: str) -> re.Pattern:
 
 
 # Arabic is matched as substrings (prefixes و/ب/ال/ف attach to words); latin words with boundaries.
-GREET = _rx(r"^(?:و)?(?:مرحب|مرحبا|هلا|هلو|هاي|اهلين|اهلا|السلام|سلام|صباح|مسا|شلونك|شلونكم|كيفك|كيفكم|ازيك|شخبارك|يا هلا)",
+GREET = _rx(r"^(?:و)?(?:مرحب|مرحبا|هلا|هلو|هاي|اهلين|اهلا|السلام|سلام|صباح|مسا|شلونك|شلونكم|كيفك|كيفكم|ازيك|شخبارك|يا هلا|كيف الحال|كيف حالك|شلون الحال|شو اخبارك)",
             r"\b(?:hi|hello|hey|salam|good (?:morning|evening))\b", r"\b(?:xin chao|chao|alo)\b", r"你好|您好|哈喽|嗨")
 BUY = _rx(r"اريد|ابي|ابغي|ابغا|بدي|بدنا|بغيت|بغينا|عايز|عاوز|محتاج|احتاج|نحتاج|حاب|ودي|اشتري|نشتري|شراء|"
           r"اطلب|نطلب|عندك|عندكم|عدكم|عدك|متوفر|موجود|في عندكم|هاتلي|هاتو|جيبلي|جيبو|انطيني|نطيني|اعطيني|عطني|اشوف",
@@ -68,7 +68,7 @@ FARM = _rx(r"مزار|مزرع|مزرعه|حساب|حسابات|فارم|فار�
            r"\bnong trai\b|\btrang trai\b|\bfarm\b", r"农场|账号|帐号")
 YES = _rx(r"^(?:و)?(?:نعم|اي|ايه|ايوه|ايوا|اكيد|تمام|موافق|اوكي|اوك|ماشي|يلا|زين|صح|اكد|اوكيه|اكدت|بلي|طيب|خلاص|"
           r"توكل|اي نعم|اي والله|يس|يب|ياريت|يا ريت|اوكي|مضبوط|حلو|اوكي اكد|نعم اكد|اكيد اكد|اشتري|اوافق)\b",
-          r"^(?:yes|yeah|yep|yup|ok|okay|sure|confirm|go ahead|do it|deal)\b",
+          r"^(?:yes|yeah|yep|yup|ok|okay|sure|confirm|go ahead|do it|deal|i agree|agree)\b",
           r"^(?:co|vang|dong y|ok|duoc|xac nhan|u)\s*[.!]*$", r"^(?:是|好|好的|可以|确认|对|行|没问题|嗯)")
 NO = _rx(r"^(?:و)?(?:لا|كلا|الغ|الغي|الغاء|لا اريد|ما اريد|مابي|ما ابي|ما بدي|مش عايز|بلاش|اتركها|لا شكرا|لغي|كنسل)\b",
          r"^(?:no|nope|cancel|stop|never ?mind)\b", r"^(?:khong|huy|thoi)\b", r"^(?:不|不要|取消|算了)")
@@ -200,8 +200,10 @@ def bare_number(text: str) -> int | None:
 
 # ------------------------------------------------------------------ replies in 4 languages
 R = {
-    "welcome": {"ar": "أهلاً وسهلاً بك في {store} 🌾 كيف أقدر أساعدك؟", "en": "Welcome to {store} 🌾 How can I help you?",
-                "vi": "Chào mừng bạn đến với {store} 🌾 Tôi có thể giúp gì cho bạn?", "zh": "欢迎来到 {store} 🌾 有什么可以帮您？"},
+    "welcome": {"ar": "أهلًا وسهلًا بك في {store} 🤖🌾\nأنا هنا لمساعدتك في شراء مزارع Hay Day بسهولة.\nماذا تحتاج؟ يمكنك كتابة طلبك مباشرة وسأساعدك خطوة بخطوة.",
+                "en": "Welcome to {store} 🤖🌾\nI'm here to help you buy Hay Day farms easily.\nWhat do you need? Just write your request and I'll guide you step by step.",
+                "vi": "Chào mừng bạn đến với {store} 🤖🌾\nTôi ở đây để giúp bạn mua nông trại Hay Day dễ dàng.\nBạn cần gì? Cứ viết yêu cầu, tôi sẽ hướng dẫn từng bước.",
+                "zh": "欢迎来到 {store} 🤖🌾\n我可以帮您轻松购买 Hay Day 农场。\n您需要什么？直接写下需求，我会一步步帮您。"},
     "ask_qty": {"ar": "أهلاً بك! كم مزرعة تحتاج؟", "en": "Sure! How many farms do you need?",
                 "vi": "Được! Bạn cần bao nhiêu nông trại?", "zh": "好的！您需要几个农场？"},
     "ask_qty_for": {"ar": "متوفر لك:\n{offer}\n\nكم مزرعة تحتاج منها؟", "en": "Available:\n{offer}\n\nHow many do you need?",
@@ -246,6 +248,40 @@ R = {
                 "en": "Sorry, I didn't quite get that 🙏 Do you want to buy farms? Tell me how many and which type, e.g. “3 farms level 50”.",
                 "vi": "Xin lỗi, tôi chưa hiểu 🙏 Bạn muốn mua nông trại? Hãy cho biết số lượng và loại, ví dụ: “3 nông trại cấp 50”.",
                 "zh": "抱歉，我没太明白 🙏 您是要买农场吗？请告诉我数量和类型，例如“3个农场 等级50”。"},
+    "ask_specs": {"ar": "أكيد! ما مواصفات المزارع التي تحتاجها؟ (المستوى، سعة المخزن، نوع الأدوات: أرض أو حظيرة أو صومعة)\n\nالمتوفر الآن:\n{list}\n\nاكتب المواصفات بكلامك، أو رقم النوع من القائمة.",
+                  "en": "Sure! Which farms do you need? (level, barn size, tool type: land, barn or silo)\n\nAvailable now:\n{list}\n\nDescribe them in your own words, or reply with a number from the list.",
+                  "vi": "Được! Bạn cần nông trại thế nào? (cấp, sức chứa kho, loại công cụ: đất, kho hoặc silo)\n\nHiện có:\n{list}\n\nHãy mô tả hoặc trả lời số thứ tự.",
+                  "zh": "好的！您需要什么样的农场？（等级、仓库容量、工具类型：土地、仓库或粮仓）\n\n目前有：\n{list}\n\n请描述您的需求，或回复列表中的编号。"},
+    "ask_field_lvl": {"ar": "ما المستوى الذي تحتاجه؟ المتوفر: {vals}", "en": "Which level do you need? Available: {vals}",
+                      "vi": "Bạn cần cấp nào? Hiện có: {vals}", "zh": "您需要哪个等级？目前有：{vals}"},
+    "ask_field_barn": {"ar": "ما سعة المخزن التي تريدها؟ المتوفر: {vals}", "en": "Which barn size? Available: {vals}",
+                       "vi": "Sức chứa kho bao nhiêu? Hiện có: {vals}", "zh": "需要多大的仓库？目前有：{vals}"},
+    "ask_field_tool_type": {"ar": "ما نوع الأدوات التي تريدها؟ المتوفر: {vals}", "en": "Which tool type? Available: {vals}",
+                            "vi": "Bạn muốn loại công cụ nào? Hiện có: {vals}", "zh": "需要哪种工具？目前有：{vals}"},
+    "ask_field_silo": {"ar": "ما سعة الصومعة التي تريدها؟ المتوفر: {vals}", "en": "Which silo size? Available: {vals}",
+                       "vi": "Sức chứa silo bao nhiêu? Hiện có: {vals}", "zh": "需要多大的粮仓？目前有：{vals}"},
+    "ask_field_tools": {"ar": "كم عدد الأدوات الذي تريده؟ المتوفر: {vals}", "en": "How many tools? Available: {vals}",
+                        "vi": "Số lượng công cụ? Hiện có: {vals}", "zh": "需要多少工具？目前有：{vals}"},
+    "ask_qty_type": {"ar": "ممتاز 👍\n{offer}\n\nكم مزرعة تحتاج من هذا النوع؟", "en": "Great 👍\n{offer}\n\nHow many farms of this type do you need?",
+                     "vi": "Tuyệt 👍\n{offer}\n\nBạn cần bao nhiêu nông trại loại này?", "zh": "好的 👍\n{offer}\n\n这种农场您需要几个？"},
+    "shortage": {"ar": "عذرًا، العدد المطلوب غير متوفر حاليًا. طلبت {q} مزارع، والمتوفر في المخزون {n} مزارع فقط.\nكم مزرعة تريد شراءها من الكمية المتوفرة؟ يمكنك كتابة العدد الذي يناسبك أو إلغاء الطلب.",
+                 "en": "Sorry, that quantity isn't available right now. You asked for {q} farms and only {n} are in stock.\nHow many would you like from the available quantity? Write the number that suits you, or cancel.",
+                 "vi": "Xin lỗi, số lượng này hiện không đủ. Bạn yêu cầu {q} nông trại, kho chỉ còn {n}.\nBạn muốn mua bao nhiêu trong số còn lại? Hãy viết số lượng hoặc hủy.",
+                 "zh": "抱歉，库存不足。您要 {q} 个，目前只有 {n} 个。\n您想从现有库存中买几个？请写数量，或取消订单。"},
+    "shortage_multi": {"ar": "عذرًا، بعض الكميات غير متوفرة حاليًا:\n{rows}\n\nاكتب العدد الجديد للنوع، مثلاً «اجعل عدد مزارع الأرض 4»، أو اكتب «إلغاء».",
+                       "en": "Sorry, some quantities aren't available:\n{rows}\n\nWrite the new number for that type, e.g. “make land 4”, or “cancel”.",
+                       "vi": "Xin lỗi, một số loại không đủ số lượng:\n{rows}\n\nHãy viết số mới cho loại đó, ví dụ “đất 4”, hoặc “hủy”.",
+                       "zh": "抱歉，部分数量不足：\n{rows}\n\n请写该类型的新数量，例如“土地 4个”，或“取消”。"},
+    "shortage_row": {"ar": "• {what}: طلبت {q} والمتوفر {n}", "en": "• {what}: you asked {q}, available {n}",
+                     "vi": "• {what}: yêu cầu {q}, còn {n}", "zh": "• {what}：您要 {q}，现有 {n}"},
+    "type_gone": {"ar": "عذرًا، هذا النوع غير متوفر حاليًا ({what}). يمكنك اختيار نوع آخر من المتوفر:\n\n{list}\n\nاكتب المواصفات أو رقم النوع.",
+                  "en": "Sorry, this type is not available right now ({what}). You can choose another available type:\n\n{list}\n\nWrite the specs or the number.",
+                  "vi": "Xin lỗi, loại này hiện hết ({what}). Bạn có thể chọn loại khác:\n\n{list}\n\nViết thông số hoặc số thứ tự.",
+                  "zh": "抱歉，这种目前没有（{what}）。您可以选择其他类型：\n\n{list}\n\n请写规格或编号。"},
+    "ready": {"ar": "تمام، جهزت لك ملخص الطلب 👇\nهل أنت متأكد من الطلب وتريد الانتقال إلى الدفع؟ يرجى كتابة «نعم» للتأكيد أو «لا» للإلغاء، ويمكنك كتابة «تعديل» إذا أردت تغيير المواصفات أو الكمية.",
+              "en": "Here's your order summary 👇\nAre you sure and want to go to payment? Reply “yes” to confirm or “no” to cancel; write “edit” to change the specs or quantity.",
+              "vi": "Đây là tóm tắt đơn hàng 👇\nBạn chắc chắn và muốn thanh toán? Trả lời “có” để xác nhận, “không” để hủy, hoặc “sửa” để thay đổi.",
+              "zh": "这是您的订单摘要 👇\n确定要下单并付款吗？回复“是”确认，“不”取消，或“修改”更改规格或数量。"},
     "multi_ready": {"ar": "تمام، جهزت لك الطلب 👇 راجع الملخص واختر «نعم، ادفع» للمتابعة أو «تعديل الطلب».",
                     "en": "Done — here is your order 👇 Review it and choose “Yes, pay” or “Edit order”.",
                     "vi": "Xong — đây là đơn của bạn 👇 Kiểm tra rồi chọn “Có, thanh toán” hoặc “Sửa đơn”.",
@@ -294,6 +330,20 @@ def offer_list(offers: list[dict], lang: str) -> str:
     return "\n".join(f"{i + 1}) {offer_text(o, lang)}" for i, o in enumerate(offers))
 
 
+VAL_FMT = {"lvl": "{v}", "barn": "{v}", "silo": "{v}", "tools": "{v}"}
+
+
+def field_values(field: str, offers: list[dict], lang: str) -> list:
+    vals = sorted({o.get(field) or ("land" if field == "tool_type" else 0) for o in offers}, key=lambda v: (str(type(v)), v))
+    return vals
+
+
+def field_vals_text(field: str, vals: list, lang: str) -> str:
+    if field == "tool_type":
+        return " / ".join(tool_label(lang, v) for v in vals)
+    return "، ".join(str(v) for v in vals) if lang == "ar" else ", ".join(str(v) for v in vals)
+
+
 # ------------------------------------------------------------------ conversation state
 async def load_state(core: Core, cid: int) -> dict:
     a = await core.pool.fetchval("SELECT awaiting FROM customers WHERE id=$1", cid)
@@ -333,7 +383,7 @@ REMOVE_RX = _rx(r"احذف|شيل|الغي|بدون|ما بدي|مابدي|ما 
 
 def split_lines(raw: str) -> list[dict]:
     """'2 مستوى 50 ادوات ارض و 2 ادوات حظيره' → [{qty 2, lvl 50, tool land}, {qty 2, tool barn, lvl 50}]"""
-    segs = [x for x in SEP_RX.split(norm(raw)) if x and x.strip()]
+    segs = [x for part in re.split(r"[\r\n]+", raw or "") for x in SEP_RX.split(norm(part)) if x and x.strip()]
     parsed = [parse(x) for x in segs]
     parsed = [x for x in parsed if x]
     with_qty = [x for x in parsed if "qty" in x]
@@ -367,17 +417,38 @@ async def _resolve_lines(core: Core, lines: list[dict], lang: str) -> tuple[list
                                        tool_label(lang, ln.get("tool_type")) if ln.get("tool_type") else ""]))
         if not matches:
             near = await farms_svc.search_offers(core, limit=8)
-            return None, r(lang, "multi_missing", what=desc, list=offer_list(near, lang)) if near else r(lang, "no_stock")
+            return None, r(lang, "type_gone", what=desc, list=offer_list(near, lang)) if near else r(lang, "no_stock")
         if len(matches) > 1:
             return None, r(lang, "multi_ambiguous", what=desc, list=offer_list(matches[:8], lang))
         out.append((matches[0]["offer_code"], int(ln["qty"])))
     return out, None
 
 
+async def _shortage_rows(core: Core, wanted: list[tuple[str, int]], lang: str) -> list[str]:
+    rows = []
+    ords = {"ar": ["النوع الأول", "النوع الثاني", "النوع الثالث", "النوع الرابع", "النوع الخامس"]}.get(lang, [])
+    for i, (code, q) in enumerate(wanted):
+        o = await farms_svc.find_offer(core, code)
+        n = o["available"] if o else 0
+        if q > n:
+            what = (ords[i] + " — " if i < len(ords) else "") + (offer_text(o, lang).split(" — ")[0] + " " + tool_label(lang, o.get("tool_type")) if o else code)
+            rows.append(r(lang, "shortage_row", what=what, q=q, n=n))
+    return rows
+
+
 async def _prepare_multi(core: Core, cid: int, wanted: list[tuple[str, int]], lang: str, res: AgentResult) -> str:
+    rows = await _shortage_rows(core, wanted, lang)
+    if rows:
+        raise ShortageError(r(lang, "shortage_multi", rows="\n".join(rows)))
     o = await orders_svc.prepare_lines(core, cid, wanted)
     res.order = o
-    return r(lang, "multi_ready")
+    return r(lang, "ready")
+
+
+class ShortageError(Exception):
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.text = text
 
 
 # ------------------------------------------------------------------ the dialog
@@ -458,6 +529,8 @@ async def respond(core: Core, customer: dict) -> AgentResult:
             return await finish(problem, {})
         try:
             text = await _prepare_multi(core, cid, wanted, lang, res)
+        except ShortageError as e:
+            return await finish(e.text, {"lines": [[c, q] for c, q in wanted], "expect": "edit"})
         except StoreError as e:
             return await finish(e.message, {})
         return await finish(text, {"lines": [[c, q] for c, q in wanted], "expect": "confirm"})
@@ -486,6 +559,8 @@ async def respond(core: Core, customer: dict) -> AgentResult:
             else:
                 text = await _prepare_multi(core, cid, [(c, q) for c, q in lines], lang, res)
                 return await finish(text, {"lines": lines, "expect": "confirm"})
+        except ShortageError as e:
+            return await finish(e.text, {"lines": lines, "expect": "edit"})
         except StoreError as e:
             return await finish(e.message)
 
@@ -494,6 +569,10 @@ async def respond(core: Core, customer: dict) -> AgentResult:
     shown = st.get("shown") or []
     num = bare_number(raw)
     picked = None
+    if expect and expect.startswith("field:") and num is not None and not has_spec and "qty" not in p:
+        field = expect.split(":", 1)[1]
+        if field in ("lvl", "barn", "silo", "tools"):
+            p[field], has_spec, num = num, True, None      # "50" answers "which level?"
     if num is not None and not has_spec and "qty" not in p:
         if expect == "type" and 1 <= num <= len(shown):
             picked = shown[num - 1]
@@ -516,7 +595,8 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         prev = st.get("spec") or {}
         new = {k: p[k] for k in ("lvl", "barn", "silo", "tools", "tool_type") if k in p}
         # "بدي ادوات حظيره" after choosing a level refines the request instead of replacing it
-        st["spec"] = {**prev, **new} if (set(new) <= {"tool_type", "tools"} and prev) else new
+        refine = (expect or "").startswith("field:") or expect == "qty" or (set(new) <= {"tool_type", "tools"} and prev)
+        st["spec"] = {**prev, **new} if (refine and prev) else new
         st.pop("offer", None)
     if picked:
         st["offer"] = picked
@@ -530,57 +610,57 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         hint = r(lang, "pending_hint", ref=pending["ref"]) if pending else ""
         return await finish(r(lang, "unclear") + hint)
 
-    # resolve the farm type
+    # resolve the farm type: ask only for the missing details, one question at a time
     offer = await farms_svc.find_offer(core, st["offer"]) if st.get("offer") else None
     if st.get("offer") and not offer:
         st.pop("offer", None)
-    if not offer and st.get("spec"):
-        matches = await _matching(core, st["spec"])
-        if len(matches) == 1:
-            offer = matches[0]
-            st["offer"] = offer["offer_code"]
-        elif not matches:
+    if not offer:
+        spec = st.get("spec") or {}
+        matches = await _matching(core, spec) if spec else await farms_svc.search_offers(core, limit=50)
+        if not matches:
             near = await farms_svc.search_offers(core, limit=50)
             if not near:
                 return await finish(r(lang, "no_stock"), {})
-            if st["spec"].get("lvl"):
-                near.sort(key=lambda o: abs(o["lvl"] - st["spec"]["lvl"]))
+            if spec.get("lvl"):
+                near.sort(key=lambda o: abs(o["lvl"] - spec["lvl"]))
             near = near[:8]
             st.update(expect="type", shown=[o["offer_code"] for o in near])
             st.pop("spec", None)
-            return await finish(r(lang, "no_match", list=offer_list(near, lang)))
-        else:
-            matches = matches[:8]
-            st.update(expect="type", shown=[o["offer_code"] for o in matches])
-            return await finish(r(lang, "ask_type", list=offer_list(matches, lang)))
-
-    # what is still missing? ask one simple question at a time
-    if not st.get("qty"):
-        if offer:
-            st.update(expect="qty")
-            return await finish(r(lang, "ask_qty_for", offer=offer_text(offer, lang)))
-        all_offers = await farms_svc.search_offers(core, limit=8)
-        if not all_offers:
-            return await finish(r(lang, "no_stock"), {})
-        st.update(expect="qty")
-        return await finish(r(lang, "ask_qty"))
-    if not offer:
-        all_offers = await farms_svc.search_offers(core, limit=8)
-        if not all_offers:
-            return await finish(r(lang, "no_stock"), {})
-        if len(all_offers) == 1:
-            offer = all_offers[0]
+            return await finish(r(lang, "type_gone", what=spec_text(spec, lang), list=offer_list(near, lang)))
+        if len(matches) == 1:
+            offer = matches[0]
             st["offer"] = offer["offer_code"]
+        elif not spec:
+            shown_list = matches[:8]
+            st.update(expect="type", shown=[o["offer_code"] for o in shown_list])
+            return await finish(r(lang, "ask_specs", list=offer_list(shown_list, lang)))
         else:
-            st.update(expect="type", shown=[o["offer_code"] for o in all_offers])
-            return await finish(r(lang, "ask_type", list=offer_list(all_offers, lang)))
+            field = next((f for f in ("lvl", "barn", "tool_type", "silo", "tools")
+                          if f not in spec and len({o.get(f) for o in matches}) > 1), None)
+            shown_list = matches[:8]
+            st.update(shown=[o["offer_code"] for o in shown_list])
+            if field:
+                st.update(expect=f"field:{field}")
+                vals = field_values(field, matches, lang)
+                return await finish(r(lang, f"ask_field_{field}", vals=field_vals_text(field, vals, lang)))
+            st.update(expect="type")
+            return await finish(r(lang, "ask_type", list=offer_list(shown_list, lang)))
 
-    # both known → price from the database, recalculated on every change
-    qty = int(st["qty"])
-    if qty > offer["available"]:
+    # quantity
+    if not st.get("qty"):
         st.update(expect="qty")
+        return await finish(r(lang, "ask_qty_type", offer=offer_text(offer, lang)))
+
+    # real stock check — never change the customer's number without asking
+    qty = int(st["qty"])
+    if offer["available"] <= 0:
+        st.clear()
+        near = await farms_svc.search_offers(core, limit=8)
+        return await finish(r(lang, "type_gone", what=offer_text(offer, lang), list=offer_list(near, lang)) if near else r(lang, "no_stock"), {})
+    if qty > offer["available"]:
         st.pop("qty", None)
-        return await finish(r(lang, "only", n=offer["available"]))
+        st.update(expect="qty")
+        return await finish(r(lang, "shortage", q=qty, n=offer["available"]))
     try:
         o = await orders_svc.prepare(core, cid, offer["offer_code"], qty)   # replaces any older unconfirmed order
     except StoreError as e:
@@ -588,10 +668,18 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         st.update(expect="qty")
         return await finish(e.message)
     res.order = o
-    short = SHORT_FMT.get(lang, SHORT_FMT["en"]).format(lvl=offer["lvl"], tt=tool_label(lang, offer.get("tool_type")))
-    keep = {"qty": qty, "offer": offer["offer_code"], "expect": "confirm"}
-    qtxt = qty if lang != "ar" else ("مزرعة واحدة" if qty == 1 else "مزرعتين" if qty == 2 else f"{qty} مزارع" if qty <= 10 else f"{qty} مزرعة")
-    return await finish(r(lang, "quote", q=qtxt, offer=short, p=fmt(o["unit_price"]), t=fmt(o["total"]), c=o["currency"]), keep)
+    return await finish(r(lang, "ready"), {"qty": qty, "offer": offer["offer_code"], "expect": "confirm"})
+
+
+def spec_text(spec: dict, lang: str) -> str:
+    bits = []
+    if spec.get("lvl"):
+        bits.append(SHORT_FMT.get(lang, SHORT_FMT["en"]).split("{lvl}")[0] + str(spec["lvl"]))
+    if spec.get("barn"):
+        bits.append({"ar": "مخزن", "en": "barn", "vi": "kho", "zh": "仓库"}.get(lang, "barn") + f" {spec['barn']}")
+    if spec.get("tool_type"):
+        bits.append(tool_label(lang, spec["tool_type"]))
+    return "، ".join(bits) if lang == "ar" else ", ".join(bits)
 
 
 async def safe_respond(core: Core, customer: dict) -> AgentResult:
