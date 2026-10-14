@@ -34,13 +34,17 @@ def offer_code(o: dict) -> str:
 
 async def search_offers(core: Core, *, min_level: int | None = None, max_level: int | None = None,
                         min_price: Any = None, max_price: Any = None, currency: str | None = None,
-                        query: str | None = None, limit: int = 15) -> list[dict]:
+                        query: str | None = None, limit: int = 15, min_barn: Any = None, max_barn: Any = None,
+                        min_silo: Any = None, max_silo: Any = None, min_tools: Any = None,
+                        max_tools: Any = None) -> list[dict]:
     """Available stock grouped into offers. Only real DB data is returned."""
     q = ("SELECT name, lvl, barn, silo, tools, price, currency, max(description) AS description, count(*) AS available "
          "FROM farms WHERE status='available'")
     args: list[Any] = []
     for col, op, val in (("lvl", ">=", min_level), ("lvl", "<=", max_level),
-                         ("price", ">=", min_price), ("price", "<=", max_price)):
+                         ("price", ">=", min_price), ("price", "<=", max_price),
+                         ("barn", ">=", min_barn), ("barn", "<=", max_barn), ("silo", ">=", min_silo),
+                         ("silo", "<=", max_silo), ("tools", ">=", min_tools), ("tools", "<=", max_tools)):
         if val not in (None, ""):
             args.append(Decimal(str(val)))
             q += f" AND {col} {op} ${len(args)}"

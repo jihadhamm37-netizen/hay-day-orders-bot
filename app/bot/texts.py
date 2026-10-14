@@ -8,10 +8,10 @@ T: dict[str, dict[str, str]] = {
     "summary": {
         "ar": "<b>ملخص الطلب</b>  <code>{ref}</code>\n\nالمزرعة: {name}\nالمستوى: {lvl}\nالمخزن: {barn}\nالصومعة: {silo}\nالأدوات: {tools}\n\n"
               "الكمية: {qty}\nسعر المزرعة: {price} {cur}\n<b>الإجمالي النهائي: {total} {cur}</b>\n\n"
-              "عند التأكيد تُحجز المزارع باسمك لمدة {minutes} دقيقة حتى تدفع.",
+              "للشراء اكتب <b>نعم</b> أو اضغط زر التأكيد. عند التأكيد تُحجز المزارع باسمك لمدة {minutes} دقيقة حتى تدفع.",
         "en": "<b>Order summary</b>  <code>{ref}</code>\n\nFarm: {name}\nLevel: {lvl}\nBarn: {barn}\nSilo: {silo}\nTools: {tools}\n\n"
               "Quantity: {qty}\nPrice per farm: {price} {cur}\n<b>Final total: {total} {cur}</b>\n\n"
-              "After confirming, the farms are reserved for you for {minutes} minutes until you pay."},
+              "To buy, reply <b>yes</b> or press confirm. The farms are then reserved for you for {minutes} minutes until you pay."},
     "btn_confirm": {"ar": "تأكيد الطلب", "en": "Confirm order"},
     "btn_cancel": {"ar": "إلغاء", "en": "Cancel"},
     "confirmed": {
@@ -21,9 +21,9 @@ T: dict[str, dict[str, str]] = {
                    "en": "No payment method is available for this currency right now. Staff have been notified."},
     "pay_details": {
         "ar": "<b>الدفع عبر {method}</b>\n\nرقم الطلب: <code>{ref}</code>\nالمبلغ: <b>{total} {cur}</b>\nالمعرّف: <code>{account}</code>\n\n{instructions}\n\n"
-              "بعد التحويل أرسل هنا صورة إثبات الدفع.",
+              "بعد التحويل أرسل هنا <b>صورة إثبات التحويل فقط</b>، ولا حاجة لرقم العملية.",
         "en": "<b>Pay with {method}</b>\n\nOrder: <code>{ref}</code>\nAmount: <b>{total} {cur}</b>\nAccount: <code>{account}</code>\n\n{instructions}\n\n"
-              "After paying, send the payment screenshot here."},
+              "After paying, just send the transfer screenshot here (no transaction ID needed)."},
     "copy_account": {"ar": "نسخ المعرّف", "en": "Copy account"},
     "copy_amount": {"ar": "نسخ المبلغ", "en": "Copy amount"},
     "copy_ref": {"ar": "نسخ رقم الطلب", "en": "Copy order number"},

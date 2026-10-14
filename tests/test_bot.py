@@ -134,13 +134,11 @@ async def test_full_ai_sale_to_delivery(env):
     # the model saw only tool data — never credentials
     assert "TOK100" not in json.dumps(model.payloads) and "pw0" not in json.dumps(model.payloads)
 
-    await press(dp, bot, 10, confirm[0].callback_data)
-    pm = [b for b in all_buttons(s, 10) if b.callback_data and b.callback_data.startswith("p:m:")]
-    assert pm
-    await press(dp, bot, 10, pm[0].callback_data)
-    assert any("1127859028" in t for t in s.texts_to(10))
-    await photo(dp, bot, 10, "proofA")
-    await say(dp, bot, 10, "TX998877665")
+    # customer answers "yes" in text → model confirms → system sends payment details (single method: no choice step)
+    model.steps += [[tool("confirm_order")], [text("تمام، حوّل المبلغ وأرسل صورة التحويل.")]]
+    await say(dp, bot, 10, "نعم")
+    assert any("1127859028" in t and "60.00" in t for t in s.texts_to(10))
+    await photo(dp, bot, 10, "proofA")   # screenshot only, no transaction number
     o = (await orders.customer_orders(core, 10))[0]
     assert o["status"] == "payment_review"
 
@@ -261,3 +259,24 @@ async def test_recent_staff_reply_keeps_chat_with_staff(env):
     n = len(model.payloads)
     await say(dp, bot, 23, "مرحبا")
     assert len(model.payloads) == n
+
+
+async def test_confirm_button_still_works(env):
+    core, bot, dp, s, model = env
+    await add_farms(core, 1)
+    model.steps += [[tool("search_farms")],
+                    lambda p: [tool("prepare_order", offer_code=last_tool_result(p)["offers"][0]["offer_code"], quantity=1)],
+                    [text("متأكد تريد تشتري؟")]]
+    await say(dp, bot, 30, "اريد مزرعة")
+    confirm = [b for b in all_buttons(s, 30) if (b.callback_data or "").startswith("o:c:")]
+    await press(dp, bot, 30, confirm[0].callback_data)
+    assert any("1127859028" in t for t in s.texts_to(30))
+    assert (await orders.customer_orders(core, 30))[0]["status"] == "awaiting_payment"
+
+
+async def test_confirm_without_prepared_order_is_refused(env):
+    core, bot, dp, s, model = env
+    seen = {}
+    model.steps += [[tool("confirm_order")], lambda p: seen.update(last_tool_result(p)) or [text("ما عندك طلب.")]]
+    await say(dp, bot, 31, "نعم")
+    assert seen["error"] == "no_pending_order"

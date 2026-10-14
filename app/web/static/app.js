@@ -568,7 +568,7 @@
     const form = (x) => {
       const i = { name: h("input", { type: "text", value: x?.name || "" }), kind: h("select", null, h("option", { value: "binance_pay" }, "Binance Pay"), h("option", { value: "manual" }, "تحويل يدوي"), h("option", { value: "other" }, "أخرى")),
         account: h("input", { type: "text", dir: "ltr", value: x?.account || "" }), currency: h("input", { type: "text", dir: "ltr", value: x?.currency || "USDT" }),
-        instructions: h("textarea"), require_txid: h("input", { type: "checkbox", checked: x ? x.require_txid : true }), is_active: h("input", { type: "checkbox", checked: x ? x.is_active : true }),
+        instructions: h("textarea"), require_txid: h("input", { type: "checkbox", checked: x ? x.require_txid : false }), is_active: h("input", { type: "checkbox", checked: x ? x.is_active : true }),
         sort_order: h("input", { type: "number", value: x?.sort_order ?? 0, dir: "ltr" }) };
       i.kind.value = x?.kind || "binance_pay"; i.instructions.value = x?.instructions || "";
       const f = h("form", null, field("الاسم الظاهر للعميل", i.name), h("div", { class: "form-grid" }, field("النوع", i.kind), field("العملة", i.currency), field("الترتيب", i.sort_order)),

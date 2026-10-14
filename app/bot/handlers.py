@@ -73,6 +73,19 @@ async def maybe_resume_ai(core: Core, cid: int) -> bool:
     return r.endswith(" 1")
 
 
+async def after_confirm(core: Core, o: dict) -> None:
+    """Order reserved: show payment details (directly when there is only one method)."""
+    methods = await pay_svc.list_methods(core, active_only=True, currency=o["currency"])
+    if len(methods) == 1:
+        o2, m = await pay_svc.choose_method(core, o["customer_id"], o["id"], methods[0]["id"])
+        await core.messenger.send_payment_details(o2, m)
+        await cust_svc.log_message(core, o["customer_id"], "system",
+                                   f"أُرسلت تفاصيل الدفع ({m['name']}) للطلب {o['ref']}: المبلغ {o['total']} {o['currency']}. "
+                                   "بانتظار صورة إثبات التحويل.")
+    else:
+        await core.messenger.send_payment_methods(o, methods)
+
+
 # ------------------------------------------------------------------ start
 @router.message(CommandStart())
 async def start(message: Message, core: Core, customer: dict, lang: str):
@@ -158,8 +171,15 @@ async def chat(message: Message, core: Core, customer: dict, lang: str, role: st
         if res.text:
             await message.answer(_esc(res.text))
             await cust_svc.log_message(core, customer["id"], "assistant", res.text)
-        if res.order:
+        if res.order and not res.confirmed:
             await core.messenger.send_order_summary(res.order)
+            await cust_svc.log_message(core, customer["id"], "system",
+                                       f"عُرض ملخص الطلب الرسمي {res.order['ref']}: {res.order['quantity']} مزرعة، "
+                                       f"الإجمالي {res.order['total']} {res.order['currency']}. بانتظار موافقة العميل.")
+        if res.confirmed:
+            await cust_svc.log_message(core, customer["id"], "system",
+                                       f"العميل أكد الطلب {res.confirmed['ref']} والمزارع محجوزة حتى انتهاء المهلة.")
+            await after_confirm(core, res.confirmed)
         if res.handoff:
             if res.handoff == "ai_error":
                 await message.answer(tt(lang, "ai_error"))
@@ -210,8 +230,7 @@ async def confirm_order(cb: CallbackQuery, core: Core, customer: dict, lang: str
         await cust_svc.log_message(core, customer["id"], "system", f"فشل تأكيد الطلب: {ex.message}")
         return
     await cust_svc.log_message(core, customer["id"], "system", f"العميل أكد الطلب {o['ref']} والمزارع محجوزة حتى انتهاء المهلة.")
-    methods = await pay_svc.list_methods(core, active_only=True, currency=o["currency"])
-    await core.messenger.send_payment_methods(o, methods)
+    await after_confirm(core, o)
 
 
 @router.callback_query(F.data.startswith("o:x:"))

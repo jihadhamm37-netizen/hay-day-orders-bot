@@ -199,6 +199,7 @@ async def test_same_proof_cannot_pay_two_orders(core):
 
 
 async def test_same_txid_cannot_pay_two_orders(core):
+    await core.pool.execute("UPDATE payment_methods SET require_txid=TRUE")
     await make_customer(core, 1)
     await make_customer(core, 2)
     await add_farms(core, 2)
@@ -309,3 +310,12 @@ TOK-9:pw9
     items = farms.parse_pairs(text)
     assert [(i["token_id"], i["password"]) for i in items] == [
         ("24-40798340", "jpae48mntne6h2fxypr339ap6f38dxnmyy4yffy4"), ("24-40798341", "abc:def"), ("TOK-9", "pw9")]
+
+
+async def test_screenshot_only_goes_straight_to_review(core):
+    await make_customer(core, 1)
+    await add_farms(core, 1)
+    o, p = await paid_flow(core, 1)
+    assert p["txid"] is None
+    assert (await orders.get_order(core, o["id"]))["status"] == "payment_review"
+    assert core.messenger.admin_msgs   # staff notified with the screenshot

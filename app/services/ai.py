@@ -33,6 +33,10 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {
          "min_level": {"type": "integer"}, "max_level": {"type": "integer"},
          "min_price": {"type": "number"}, "max_price": {"type": "number"},
+         "min_barn": {"type": "integer"}, "max_barn": {"type": "integer"},
+         "min_silo": {"type": "integer"}, "max_silo": {"type": "integer"},
+         "min_tools": {"type": "integer", "description": "tools = land/expansion tools (أدوات أرض)"},
+         "max_tools": {"type": "integer"},
          "currency": {"type": "string"}, "keyword": {"type": "string"}}}},
     {"name": "stock_overview",
      "description": "Overall stock: how many farms are available and the level/price ranges. Use for general questions.",
@@ -44,6 +48,10 @@ TOOLS = [
      "input_schema": {"type": "object", "required": ["offer_code", "quantity"], "properties": {
          "offer_code": {"type": "string", "description": "offer_code from search_farms"},
          "quantity": {"type": "integer", "minimum": 1}}}},
+    {"name": "confirm_order",
+     "description": "The customer clearly said YES (نعم/اي/تمام/أكيد/yes) to buying the order you just prepared. Reserves the "
+                    "farms and the SYSTEM immediately sends the payment details. Never call it without an explicit yes.",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "my_orders",
      "description": "The customer's recent orders with their real current status, totals and reasons.",
      "input_schema": {"type": "object", "properties": {}}},
@@ -66,23 +74,28 @@ class AgentResult:
     text: str = ""
     order: dict | None = None          # order summary the system must show with a confirm button
     handoff: str | None = None         # reason, if the chat was transferred to staff
+    confirmed: dict | None = None      # order the customer confirmed by text; the system sends payment details
     tool_calls: list[str] = field(default_factory=list)
 
 
-def _system_prompt(s: dict, customer: dict) -> str:
+def _system_prompt(s: dict, customer: dict, state: str = "") -> str:
     store = s.get("store_name") or "HD农场"
     return f"""You are the sales assistant of "{store}", a Telegram store that sells Hay Day game farms. Each farm is delivered as a Token ID + password.
 
-LANGUAGE: Always reply in the customer's language and dialect (Arabic incl. Iraqi dialect, English, or any other language). Understand slang and informal writing.
+LANGUAGE: Reply in the language and dialect of the customer's LAST message (Arabic incl. Iraqi dialect, English, or any other language). If they write Arabic, answer in Arabic. Understand slang and informal writing.
 
 HARD RULES (never break them):
 1. Never invent or estimate farms, levels, barn/silo/tools numbers, prices, currencies, stock, order statuses or payment details. Use ONLY tool results and the store information below. If a tool returns nothing, say so honestly.
 2. You cannot change prices, give discounts, reserve, confirm payments or deliver. The system does those. If asked, explain politely or hand off to staff.
 3. Never ask for or reveal Token IDs/passwords. They are delivered automatically by the system only after the payment is verified by staff.
-4. To sell: search_farms → present the matching offers clearly (level, barn, silo, tools, price + currency, available) → when the customer picks one and a quantity, call prepare_order. Then tell them to review the official summary and press the confirm button. Do not restate a total different from the tool result.
-5. After confirming an order the system shows the payment methods and instructions; payment is confirmed only after staff verify it.
+4. SELLING FLOW:
+   a. If the request is vague ("اريد مزارع", "عندكم مزارع؟"), call search_farms and briefly list what is available, then ask which level/specs and how many they want.
+   b. When they describe what they want (level, barn/silo/tools = أدوات أرض, budget, quantity), call search_farms with those filters. If nothing matches exactly, say so and suggest the closest available offers.
+   c. When they chose an offer and a quantity, call prepare_order. Tell them the total from the tool result (quantity x unit price) and ask: are you sure you want to buy? (e.g. "متأكد تريد تشتري؟ اكتب نعم").
+   d. When they answer yes, call confirm_order. The system then sends the payment details. Tell them to transfer the exact amount and send ONLY a screenshot of the transfer here (no transaction number needed). Delivery is automatic after staff verify the payment.
+5. Answer every question about farms, levels, specs, stock, prices, totals, payment methods and the buying steps yourself, from the tools and the store information.
 6. For order status questions call my_orders and report the real status.
-7. If nothing is in stock or nothing matches, just say so honestly and offer to check other levels later — this is NOT a reason to hand off. Greetings, small talk, general questions about the store and questions you can answer from the information below are also NOT reasons to hand off. Call handoff_to_human only when the customer asks for a human, complains, reports a problem with a delivered farm or payment, asks for a discount/special deal, or asks something you truly cannot answer from the tools or store information.
+7. If nothing is in stock or nothing matches, say so honestly. Greetings, small talk, discount requests (politely say prices are fixed) and normal questions are NOT reasons to hand off. Call handoff_to_human ONLY for a complaint, a problem or error (wrong/non-working farm, payment issue, something went wrong with an order), or when the customer insists on talking to a person.
 8. Do not use emojis. Keep replies short and clear. Plain text only (no markdown tables).
 
 STORE INFORMATION (official — you may quote it):
@@ -95,6 +108,9 @@ STORE INFORMATION (official — you may quote it):
 STYLE NOTES FROM THE OWNER: {s.get('ai_instructions', '')}
 
 Customer: {customer.get('first_name') or ''} (Telegram id {customer['id']}).
+
+CURRENT ORDER STATE (live from the database — trust this over the conversation):
+{state or '- no open orders'}
 """
 
 
@@ -145,9 +161,20 @@ async def _run_tool(core: Core, customer: dict, name: str, args: dict, res: Agen
         if name == "prepare_order":
             o = await orders_svc.prepare(core, cid, str(args.get("offer_code", "")), int(args.get("quantity", 1)))
             res.order = o
-            return {"result": "official summary with a confirm button will be shown to the customer right after your reply",
+            return {"result": "the system shows the customer an official summary right after your reply. Now ask the customer to confirm the purchase (yes/no)",
                     "order_ref": o["ref"], "quantity": o["quantity"], "unit_price": str(o["unit_price"]),
                     "total": str(o["total"]), "currency": o["currency"]}
+        if name == "confirm_order":
+            oid = await core.pool.fetchval(
+                "SELECT id FROM orders WHERE customer_id=$1 AND status='pending_confirmation' ORDER BY id DESC LIMIT 1", cid)
+            if not oid:
+                return {"error": "no_pending_order", "message": "No prepared order to confirm. Prepare one first."}
+            o = await orders_svc.confirm(core, cid, oid)
+            res.confirmed = o
+            return {"result": "confirmed and reserved; the system is sending the payment details now. Tell the customer to "
+                              "transfer the exact amount and send the payment screenshot here.",
+                    "order_ref": o["ref"], "total": str(o["total"]), "currency": o["currency"],
+                    "reserved_until": o["reserved_until"].isoformat()}
         if name == "my_orders":
             out = []
             for o in await orders_svc.customer_orders(core, cid, 8):
@@ -168,6 +195,23 @@ async def _run_tool(core: Core, customer: dict, name: str, args: dict, res: Agen
     except StoreError as e:
         return {"error": e.code, "message": e.message, **{k: _jsonable(v) for k, v in (e.params or {}).items()}}
     return {"error": "unknown_tool"}
+
+
+async def _order_state(core: Core, cid: int) -> str:
+    rows = await core.pool.fetch(
+        "SELECT ref, status, offer, quantity, total, currency, reserved_until FROM orders WHERE customer_id=$1 "
+        "AND status NOT IN ('delivered','cancelled','rejected') ORDER BY id DESC LIMIT 5", cid)
+    lines = []
+    for r in rows:
+        o = r["offer"]
+        what = f"{r['quantity']} x level {o['lvl']} (barn {o['barn']}, silo {o['silo']}, tools {o['tools']}) = {fmt(r['total'])} {r['currency']}"
+        if r["status"] == "pending_confirmation":
+            lines.append(f"- {r['ref']}: PREPARED, waiting for the customer's yes. {what}. If the customer agrees → call confirm_order (do NOT prepare again).")
+        elif r["status"] == "awaiting_payment":
+            lines.append(f"- {r['ref']}: CONFIRMED, payment details already sent, waiting for the transfer screenshot. {what}.")
+        else:
+            lines.append(f"- {r['ref']}: {orders_svc.status_text(r['status'], 'en')}. {what}.")
+    return "\n".join(lines)
 
 
 async def _call_api(core: Core, payload: dict) -> dict:
@@ -200,9 +244,10 @@ async def respond(core: Core, customer: dict) -> AgentResult:
     res = AgentResult()
     if not messages:
         return res
+    state = await _order_state(core, customer["id"])
     for _ in range(MAX_TOOL_ROUNDS):
         data = await call_api(core, {"model": core.config.ai_model, "max_tokens": 800,
-                                     "system": _system_prompt(s, customer), "tools": TOOLS, "messages": messages})
+                                     "system": _system_prompt(s, customer, state), "tools": TOOLS, "messages": messages})
         blocks = data.get("content") or []
         text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
         uses = [b for b in blocks if b.get("type") == "tool_use"]
