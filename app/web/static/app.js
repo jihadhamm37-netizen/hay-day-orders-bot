@@ -264,7 +264,7 @@
     const st = s.orders_by_status;
     const aiOn = state.me.ai_configured;
     mainEl.replaceChildren(
-      aiOn ? null : h("div", { class: "notice warn" }, "الذكاء الاصطناعي غير مُفعّل: أضف ANTHROPIC_API_KEY في متغيرات الخادم. حتى ذلك الحين تُحوَّل كل الرسائل إلى الإدارة."),
+      aiOn ? null : h("div", { class: "notice" }, "المساعد المجاني المدمج يرد على العملاء ويبيع تلقائياً (بدون أي اشتراك). يفهم المستوى والمخزن والصومعة والأدوات والعدد، ويحوّل الشكاوى فقط للإدارة."),
       h("div", { class: "grid kpis" },
         kpi("الإيرادات (USDT)", money(usdt.revenue), `${usdt.orders} طلب مسلّم · ${usdt.farms} مزرعة`),
         kpi("الأرباح (USDT)", money(usdt.profit), usdt.farms_without_cost ? `${usdt.farms_without_cost} مزرعة بلا تكلفة مسجلة` : "الإيراد − التكلفة"),
@@ -605,7 +605,7 @@
         el = s.kind === "longtext" ? h("textarea") : h("input", { type: "text", dir: s.kind === "int" ? "ltr" : "auto" }); el.value = s.value; inputs[k] = el; return field(s.label, el); }))));
     mainEl.replaceChildren(
       state.me.ai_configured ? h("div", { class: "notice" }, "البوت يجيب فقط من بيانات المخزون والطلبات الحقيقية ومن النصوص أدناه. لا يستطيع تغيير الأسعار أو تأكيد الدفع.")
-        : h("div", { class: "notice warn" }, "مفتاح ANTHROPIC_API_KEY غير مضبوط على الخادم — الرد الآلي لا يعمل حالياً، وكل الرسائل تُحوَّل للإدارة."),
+        : h("div", { class: "notice" }, "يعمل المساعد المجاني المدمج (بدون اشتراك). رسالة الترحيب ونصوص الدعم أدناه تُستخدم كما هي؛ تعليمات الذكاء الاصطناعي لا تُستخدم إلا عند إضافة مفتاح Claude."),
       ...cards, h("div", { class: "btn-row" }, h("button", { class: "btn primary", onclick: async () => {
         const body = {}; for (const [k, el] of Object.entries(inputs)) body[k] = el.type === "checkbox" ? el.checked : el.value;
         await run(() => api("PUT", "/settings", body), "تم الحفظ — يُطبق فوراً"); } }, "حفظ الإعدادات")));

@@ -13,6 +13,7 @@ from . import ai as ai_svc
 from . import customers as cust_svc
 from . import orders as orders_svc
 from . import payments as pay_svc
+from . import rules as rules_svc
 from .system import get_settings, setting
 
 log = logging.getLogger(__name__)
@@ -92,7 +93,8 @@ async def handle_text(core: Core, customer: dict, text: str) -> None:
         if await maybe_resume_ai(core, cid):
             await note(core, cid, "عاد الرد الآلي تلقائياً (لا رد من الإدارة)")
         fresh = await cust_svc.get(core, cid)
-        ai_on = (await setting(core, "ai_enabled", "true")) == "true" and ai_svc.enabled(core)
+        ai_on = (await setting(core, "ai_enabled", "true")) == "true"
+        engine = ai_svc if ai_svc.enabled(core) else rules_svc   # Claude if a key is set, else the free built-in assistant
         if fresh["ai_paused"] or not ai_on:
             await forward_to_staff(core, fresh, text)
             window = "30 minutes" if fresh["ai_paused"] and ai_on else "1 minute"
@@ -103,7 +105,7 @@ async def handle_text(core: Core, customer: dict, text: str) -> None:
             if not recent:
                 await core.messenger.notify_customer(cid, "waiting_staff")
             return
-        res = await ai_svc.safe_respond(core, fresh)
+        res = await engine.safe_respond(core, fresh)
         if res.text:
             await cust_svc.log_message(core, cid, "assistant", res.text)
         if res.order and not res.confirmed:
