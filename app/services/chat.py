@@ -33,11 +33,13 @@ async def note(core: Core, cid: int, text: str) -> None:
 
 
 async def welcome(core: Core, customer: dict) -> None:
-    """First open of the app: greet once."""
+    """First open of the app: greet once, in the language the customer picked."""
     if await core.pool.fetchval("SELECT 1 FROM messages WHERE customer_id=$1 LIMIT 1", customer["id"]):
         return
     s = await get_settings(core)
-    text = (s.get("welcome_text") or "").strip() or tt(customer.get("lang"), "welcome", store=s.get("store_name") or "HD Agent")
+    lang = customer.get("lang") or "ar"
+    custom = (s.get("welcome_text") or "").strip()
+    text = custom if (lang == "ar" and custom) else rules_svc.r(lang, "welcome", store=s.get("store_name") or "HD Agent")
     await cust_svc.log_message(core, customer["id"], "assistant", text)
 
 
@@ -85,9 +87,7 @@ async def handle_text(core: Core, customer: dict, text: str) -> None:
     if not text:
         return
     cid = customer["id"]
-    lang = cust_svc.detect_lang(text) or customer.get("lang") or "ar"
-    if lang != customer.get("lang"):
-        await cust_svc.set_lang(core, cid, lang)
+    lang = rules_svc.reply_lang(text, customer.get("lang"))   # the app language stays what the customer chose
     async with lock(cid):
         await cust_svc.log_message(core, cid, "user", text)
         if await maybe_resume_ai(core, cid):

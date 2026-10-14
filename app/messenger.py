@@ -60,11 +60,12 @@ class AppMessenger:
 
     async def send_payment_details(self, order: dict, method: dict) -> None:
         lang = await self._lang(order["customer_id"])
+        instr = (method["instructions"] or "") if lang == "ar" else ""
         text = tt(lang, "pay_details", method=method["name"], ref=order["ref"], total=fmt(order["total"]),
-                  cur=order["currency"], account=method["account"], instructions=method["instructions"] or "")
+                  cur=order["currency"], account=method["account"], instructions=instr)
         await self._post(order["customer_id"], text, "pay_details", {
             "order_id": order["id"], "ref": order["ref"], "method": method["name"], "account": method["account"],
-            "instructions": method["instructions"] or "", "total": fmt(order["total"]), "amount": str(order["total"]),
+            "instructions": instr, "total": fmt(order["total"]), "amount": str(order["total"]),
             "currency": order["currency"], "reserved_until": order["reserved_until"].isoformat()
             if order.get("reserved_until") else None})
 

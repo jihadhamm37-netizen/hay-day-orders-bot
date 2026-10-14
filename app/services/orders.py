@@ -43,6 +43,11 @@ STATUS_EN = {
     "cancelled": "Cancelled",
     "rejected": "Rejected",
 }
+STATUS_VI = {"pending_confirmation": "Chờ bạn xác nhận", "awaiting_payment": "Chờ thanh toán", "proof_received": "Đã nhận bằng chứng",
+             "payment_review": "Đang kiểm tra thanh toán", "payment_confirmed": "Đã xác nhận thanh toán", "processing": "Đang xử lý",
+             "delivered": "Đã giao", "cancelled": "Đã hủy", "rejected": "Bị từ chối"}
+STATUS_ZH = {"pending_confirmation": "待您确认", "awaiting_payment": "待付款", "proof_received": "已收到凭证", "payment_review": "付款审核中",
+             "payment_confirmed": "付款已确认", "processing": "处理中", "delivered": "已交付", "cancelled": "已取消", "rejected": "已拒绝"}
 OPEN = ("pending_confirmation", "awaiting_payment", "proof_received", "payment_review", "payment_confirmed", "processing")
 PENDING_TTL_MIN = 30
 
@@ -328,4 +333,4 @@ async def list_orders(core: Core, *, status: str | None = None, search: str | No
 
 
 def status_text(status: str, lang: str) -> str:
-    return (STATUS_EN if lang != "ar" else STATUS_AR).get(status, status)
+    return {"ar": STATUS_AR, "vi": STATUS_VI, "zh": STATUS_ZH}.get(lang, STATUS_EN).get(status, status)

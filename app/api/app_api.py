@@ -17,6 +17,7 @@ app_login_limiter = RateLimiter(12, 600)
 upload_limiter = RateLimiter(20, 600)
 MAX_IMAGE = 8 * 1024 * 1024
 SESSION_TTL = 10 * 365 * 24 * 3600     # "stay signed in" — revoked by resetting the device or disabling the code
+LANGS = ("ar", "en", "vi", "zh")
 VISIBLE = "(role <> 'system' OR kind <> 'internal')"
 
 
@@ -48,6 +49,10 @@ def build_router(ok) -> APIRouter:
         if not app_login_limiter.check(client_ip(request)):
             raise HTTPException(429, "محاولات كثيرة، انتظر قليلاً ثم حاول.")
         c = await cust_svc.login_with_code(core, body.get("code", ""), body.get("device_id", ""), body.get("device_label"))
+        lang = body.get("lang")
+        if lang in LANGS:
+            await core.pool.execute("UPDATE customers SET lang=$2 WHERE id=$1", c["id"], lang)
+            c["lang"] = lang
         token = make_token(core, {"p": "app", "sub": str(c["id"]), "dev": c["device_id"], "v": c["session_ver"]}, SESSION_TTL)
         await chat.welcome(core, c)
         return ok({"token": token, "name": c["first_name"], "code": c["access_code"]})
@@ -57,6 +62,14 @@ def build_router(ok) -> APIRouter:
         await chat.welcome(core, c)
         return ok({"id": c["id"], "name": c["first_name"], "code": c["access_code"], "lang": c["lang"],
                    "device": c["device_label"]})
+
+    @r.post("/lang")
+    async def set_lang(body: dict = Body(...), c: dict = Depends(current_customer), core: Core = Depends(get_core)):
+        lang = body.get("lang")
+        if lang not in LANGS:
+            raise StoreError("bad_lang", "Unsupported language.")
+        await core.pool.execute("UPDATE customers SET lang=$2 WHERE id=$1", c["id"], lang)
+        return ok()
 
     @r.get("/messages")
     async def messages(after: int = 0, c: dict = Depends(current_customer), core: Core = Depends(get_core)):

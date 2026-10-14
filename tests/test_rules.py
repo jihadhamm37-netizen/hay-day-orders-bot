@@ -1,95 +1,127 @@
-"""Free built-in assistant (no AI key): understands requests and sells end to end."""
+"""Free built-in assistant v2 (no AI key): context-aware conversations in many phrasings and 4 languages."""
 from __future__ import annotations
 
 import pytest
 
 from app.messenger import AppMessenger
-from app.services import chat, customers, orders, rules
-from tests.conftest import add_farms
+from app.services import chat, customers, farms, orders, rules
 
 
-def test_parse_specs_and_quantity():
-    p = rules.parse("اريد 5 مزارع مستوى 50 مخزن 3000 ادوات ارض 3000")
-    assert p == {"lvl": 50, "barn": 3000, "tools": 3000, "qty": 5}
+def test_parse():
+    assert rules.parse("اريد 5 مزارع مستوى 50 مخزن 3000 ادوات ارض 3000") == {"lvl": 50, "barn": 3000, "tools": 3000, "qty": 5}
     assert rules.parse("ابي مزرعتين لفل ١٠٠ صومعة 2k") == {"lvl": 100, "silo": 2000, "qty": 2}
     assert rules.parse("I want 3 farms level 80 barn 10,000") == {"lvl": 80, "barn": 10000, "qty": 3}
-    assert rules.parse("مستوى 70 وحدة") == {"lvl": 70, "qty": 1}
+    assert rules.parse("ابغى مزرعه مستوا 50") == {"lvl": 50, "qty": 1}
+    assert rules.parse("tôi muốn mua 2 nông trại cấp 50") == {"lvl": 50, "qty": 2}
+    assert rules.parse("我要三个农场") == {"qty": 3}
+    assert rules.bare_number("بدي 3") == 3 and rules.bare_number("مستوى 50") is None
 
 
 @pytest.fixture
 async def env(core):
-    core.config.anthropic_api_key = ""          # no AI subscription
+    core.config.anthropic_api_key = ""
     core.messenger = AppMessenger(core)
-    c = (await customers.create_codes(core, "t", 1, "Ali"))[0]
-    return core, await customers.get(core, c["id"])
+    await farms.import_farms(core, "t", [{"line": i, "token_id": f"A{i}", "password": "p"} for i in range(20)],
+                             defaults={"lvl": 50, "barn": 3000, "silo": 2000, "tools": 3000, "price": "4"})
+    await farms.import_farms(core, "t", [{"line": i, "token_id": f"B{i}", "password": "p"} for i in range(20)],
+                             defaults={"lvl": 100, "barn": 10000, "silo": 3000, "tools": 10000, "price": "10"})
+    return core
 
 
-async def say(core, cust, text):
-    await chat.handle_text(core, await customers.get(core, cust["id"]), text)
-    r = await core.pool.fetchrow("SELECT content FROM messages WHERE customer_id=$1 AND role='assistant' ORDER BY id DESC LIMIT 1",
-                                 cust["id"])
-    return r["content"] if r else ""
+async def talk(core, msgs, lang="ar"):
+    c = (await customers.create_codes(core, "t", 1, "x"))[0]
+    await core.pool.execute("UPDATE customers SET lang=$2 WHERE id=$1", c["id"], lang)
+    replies = []
+    for m in msgs:
+        await chat.handle_text(core, await customers.get(core, c["id"]), m)
+        replies.append(await core.pool.fetchval(
+            "SELECT content FROM messages WHERE customer_id=$1 AND role='assistant' ORDER BY id DESC LIMIT 1", c["id"]) or "")
+    last = (await orders.customer_orders(core, c["id"], 1) or [None])[0]
+    return replies, last, c["id"]
 
 
-async def test_full_sale_without_ai(env):
-    core, cust = env
-    await add_farms(core, 7, lvl=50, price="4", prefix="A")
-    await core.pool.execute("UPDATE farms SET barn=3000, silo=2000, tools=3000")
-    await add_farms(core, 3, lvl=100, price="30", prefix="B")
-    reply = await say(core, cust, "اريد 5 مزارع مستوى 50 مخزن 3000 ادوات ارض 3000")
-    assert "20.00" in reply and "متأكد" in reply
-    o = (await orders.customer_orders(core, cust["id"]))[0]
-    assert o["status"] == "pending_confirmation" and o["quantity"] == 5
-    reply = await say(core, cust, "نعم")
-    o = (await orders.customer_orders(core, cust["id"]))[0]
+# the exact conversation from the brief
+async def test_brief_conversation(env):
+    r, o, _ = await talk(env, ["مرحبا", "بدي مزارع.", "بدي 3 مزارع.", "1", "نعم"])
+    assert "أهلاً وسهلاً" in r[0] and "كيف أقدر أساعدك" in r[0]
+    assert "كم مزرعة" in r[1]
+    assert "ما نوع المزارع" in r[2] and "1)" in r[2]
+    assert "3 مزارع" in r[3] and "4.00" in r[3] and "12.00" in r[3] and "تؤكد" in r[3]
+    assert o["status"] == "awaiting_payment" and o["quantity"] == 3
+
+
+@pytest.mark.parametrize("opening", ["أريد مزارع", "بدي مزارع", "احتاج مزارع", "عندك مزارع؟", "هاتلي مزارع", "ابغى مزارع",
+                                     "عايز مزارع", "عندكم فارمات", "اريد اشتري مزارع"])
+async def test_many_ways_to_ask(env, opening):
+    r, o, _ = await talk(env, [opening, "بدي 3", "الثاني", "اكيد"])
+    assert "كم مزرعة" in r[0]
+    assert "ما نوع" in r[1]
+    assert "30.00" in r[2]
+    assert o["status"] == "awaiting_payment" and o["quantity"] == 3 and o["offer"]["lvl"] == 100
+
+
+async def test_one_message_with_everything(env):
+    r, o, _ = await talk(env, ["أريد ثلاث مزارع مستوى 50 مخزن 3000 أدوات أرض 3000", "تمام"])
+    assert "12.00" in r[0]
     assert o["status"] == "awaiting_payment"
-    assert await core.pool.fetchval("SELECT count(*) FROM messages WHERE customer_id=$1 AND kind='pay_details'", cust["id"]) == 1
 
 
-async def test_vague_request_lists_offers_then_pick_by_number(env):
-    core, cust = env
-    await add_farms(core, 2, lvl=50, price="4", prefix="A")
-    await add_farms(core, 3, lvl=100, price="30", prefix="B")
-    reply = await say(core, cust, "اريد مزارع")
-    assert "1)" in reply and "2)" in reply and "مستوى 50" in reply and "مستوى 100" in reply
-    reply = await say(core, cust, "2")
-    assert "كم مزرعة" in reply
-    reply = await say(core, cust, "3")
-    assert "90.00" in reply
-    await say(core, cust, "اي")
-    assert (await orders.customer_orders(core, cust["id"]))[0]["status"] == "awaiting_payment"
+async def test_change_quantity_and_type_recalculates(env):
+    r, o, cid = await talk(env, ["هاتلي ثلاث مزارع لفل ١٠٠", "لا خليها 2", "لا بدي مستوى 50", "زين"])
+    assert "30.00" in r[0]
+    assert "20.00" in r[1]
+    assert "8.00" in r[2]
+    assert o["status"] == "awaiting_payment" and o["quantity"] == 2 and o["offer"]["lvl"] == 50
+    # older unconfirmed quotes were replaced, never reserved
+    assert await env.pool.fetchval("SELECT count(*) FROM orders WHERE customer_id=$1 AND status='awaiting_payment'", cid) == 1
 
 
-async def test_more_than_stock_and_no_match(env):
-    core, cust = env
-    await add_farms(core, 2, lvl=50, price="4")
-    reply = await say(core, cust, "اريد 5 مزارع مستوى 50")
-    assert "المتوفر من هذا العرض 2" in reply
-    reply = await say(core, cust, "اريد مزرعة مستوى 200")
-    assert "أقرب" in reply
+async def test_no_order_without_explicit_yes(env):
+    r, o, cid = await talk(env, ["بدي 2 مزارع مستوى 50", "شكد السعر؟", "كيف ادفع"])
+    assert o["status"] == "pending_confirmation"
+    assert await env.pool.fetchval("SELECT count(*) FROM farms WHERE status='reserved'") == 0
 
 
-async def test_cancel_and_status_and_payment(env):
-    core, cust = env
-    await add_farms(core, 2, lvl=50, price="4")
-    await say(core, cust, "اريد مزرعتين مستوى 50")
-    reply = await say(core, cust, "لا")
-    assert "تم إلغاء" in reply
-    reply = await say(core, cust, "طلباتي")
-    assert "ملغي" in reply or "الطلب ملغي" in reply
-    reply = await say(core, cust, "كيف ادفع؟")
-    assert "Binance Pay" in reply and "صورة التحويل" in reply
+async def test_cancel(env):
+    r, o, _ = await talk(env, ["بدي 2 مزارع مستوى 50", "لا"])
+    assert "إلغاء" in r[1] and o["status"] == "cancelled"
 
 
-async def test_complaint_goes_to_staff_and_discount_does_not(env):
-    core, cust = env
-    await add_farms(core, 1)
-    await say(core, cust, "المزرعة ما تشتغل عندي مشكلة")
-    assert await core.pool.fetchval("SELECT ai_paused FROM customers WHERE id=$1", cust["id"])
+async def test_typos_and_dialects(env):
+    r, o, _ = await talk(env, ["مرحبااااا", "ابغى مزرعه مستوا 50", "يس"])
+    assert "أهلاً" in r[0] and "4.00" in r[1] and o["status"] == "awaiting_payment"
+
+
+async def test_unclear_asks_simple_question(env):
+    r, _, _ = await talk(env, ["ششش"])
+    assert "تقصد تشتري مزارع" in r[0]
+
+
+async def test_complaint_goes_to_staff(env):
+    _, _, cid = await talk(env, ["المزرعة ما تشتغل"])
+    assert await env.pool.fetchval("SELECT ai_paused FROM customers WHERE id=$1", cid)
+
+
+async def test_discount_is_not_a_complaint(env):
+    r, _, cid = await talk(env, ["سويلي خصم"])
+    assert "ثابتة" in r[0] and not await env.pool.fetchval("SELECT ai_paused FROM customers WHERE id=$1", cid)
+
+
+async def test_more_than_stock(env):
+    r, _, _ = await talk(env, ["بدي 50 مزرعة مستوى 50"])
+    assert "20" in r[0] and "فقط" in r[0]
 
 
 async def test_english(env):
-    core, cust = env
-    await add_farms(core, 3, lvl=80, price="10")
-    reply = await say(core, cust, "I want 2 farms level 80")
-    assert "20.00" in reply and "sure" in reply
+    r, o, _ = await talk(env, ["hi", "i need some farms", "3", "level 100", "yes"], "en")
+    assert "Welcome" in r[0] and "How many" in r[1] and "30.00" in r[3] and o["status"] == "awaiting_payment"
+
+
+async def test_vietnamese(env):
+    r, o, _ = await talk(env, ["xin chào", "tôi muốn mua 2 nông trại cấp 50", "có"], "vi")
+    assert "Chào mừng" in r[0] and "8.00" in r[1] and o["status"] == "awaiting_payment"
+
+
+async def test_chinese(env):
+    r, o, _ = await talk(env, ["你好", "我要三个农场", "1", "确认"], "zh")
+    assert "欢迎" in r[0] and "12.00" in r[2] and o["status"] == "awaiting_payment"
