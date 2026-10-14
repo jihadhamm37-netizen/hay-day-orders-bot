@@ -126,9 +126,11 @@ async def chat(message: Message, core: Core, customer: dict, lang: str, role: st
         ai_on = (await setting(core, "ai_enabled", "true")) == "true" and ai_svc.enabled(core)
         if fresh["ai_paused"] or not ai_on:
             await forward_to_staff(core, fresh, text)
+            # human takeover: acknowledge at most every 30 min; AI off/unconfigured: acknowledge every message
+            window = "30 minutes" if fresh["ai_paused"] and ai_on else "1 minute"
             recent = await core.pool.fetchval(
                 "SELECT 1 FROM messages WHERE customer_id=$1 AND role IN ('admin','system') "
-                "AND (role='admin' OR content='waiting_staff') AND created_at > now() - interval '30 minutes' LIMIT 1",
+                f"AND (role='admin' OR content='waiting_staff') AND created_at > now() - interval '{window}' LIMIT 1",
                 customer["id"])
             if not recent:
                 await message.answer(tt(lang, "waiting_staff"))

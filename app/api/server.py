@@ -1,6 +1,7 @@
 """Backend API for the admin web panel. Every route is authenticated and permission-checked."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from datetime import date, datetime
@@ -48,6 +49,7 @@ def create_app(core: Core, bot: Bot | None = None) -> FastAPI:
     app.state.core = core
     app.state.bot = bot
     panel = core.config.panel_path
+    asset_v = hashlib.sha1(b"".join((WEB_DIR / "static" / f).read_bytes() for f in ("app.js", "style.css"))).hexdigest()[:10]
 
     @app.exception_handler(StoreError)
     async def store_error(_: Request, exc: StoreError):
@@ -84,7 +86,7 @@ def create_app(core: Core, bot: Bot | None = None) -> FastAPI:
     @app.get(panel, include_in_schema=False)
     @app.get(panel + "/", include_in_schema=False)
     async def panel_index():
-        html = (WEB_DIR / "index.html").read_text(encoding="utf-8").replace("__PANEL__", panel)
+        html = (WEB_DIR / "index.html").read_text(encoding="utf-8").replace("__PANEL__", panel).replace("__V__", asset_v)
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     app.mount(panel + "/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
