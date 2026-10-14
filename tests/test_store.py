@@ -296,3 +296,16 @@ async def test_audit_log_is_immutable(core):
         await core.pool.execute("UPDATE audit_log SET action='x'")
     with pytest.raises(Exception):
         await core.pool.execute("DELETE FROM audit_log")
+
+
+def test_parse_pairs_id_password_blocks():
+    text = """ID: 24-40798340
+Password: jpae48mntne6h2fxypr339ap6f38dxnmyy4yffy4
+
+ID: 24-40798341
+Password: abc:def
+TOK-9:pw9
+"""
+    items = farms.parse_pairs(text)
+    assert [(i["token_id"], i["password"]) for i in items] == [
+        ("24-40798340", "jpae48mntne6h2fxypr339ap6f38dxnmyy4yffy4"), ("24-40798341", "abc:def"), ("TOK-9", "pw9")]

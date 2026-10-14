@@ -227,18 +227,7 @@ def create_app(core: Core, bot: Bot | None = None) -> FastAPI:
     @api.post("/farms/import-text")
     async def farm_import_text(request: Request, body: dict = Body(...), admin=Depends(require("catalog"))):
         """Shared details (level, price…) + one 'TokenID:Password' per line."""
-        items = []
-        for n, line in enumerate((body.get("text") or "").splitlines(), 1):
-            line = line.strip()
-            if not line:
-                continue
-            for sep in (":", ",", ";", "\t", "|", " "):
-                if sep in line:
-                    tok, pw = line.split(sep, 1)
-                    break
-            else:
-                tok, pw = line, ""
-            items.append({"line": n, "token_id": tok.strip(), "password": pw.strip()})
+        items = farms.parse_pairs(body.get("text") or "")
         rep = await farms.import_farms(core, actor_of(admin), items, defaults=body.get("defaults") or {},
                                        preview=bool(body.get("preview")), ip=client_ip(request))
         return ok(rep)

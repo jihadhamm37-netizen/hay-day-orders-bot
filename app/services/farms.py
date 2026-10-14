@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import hashlib
 import io
 from decimal import Decimal
@@ -258,6 +259,50 @@ async def bulk_delete(core: Core, actor: str, ids: list[int], ip: str | None = N
 
 # --------------------------------------------------------------- import
 CSV_HELP = "name,lvl,barn,silo,tools,price,currency,token_id,password,cost,description"
+
+
+_ID_RE = re.compile(r"^\s*(?:token\s*id|token|id|login|التوكن|المعرف|الايدي|آيدي|ايدي)\s*[:：=\-]\s*(.+)$", re.I)
+_PW_RE = re.compile(r"^\s*(?:password|pass|pw|كلمة\s*المرور|كلمة\s*السر|الباسورد|باسورد)\s*[:：=\-]\s*(.+)$", re.I)
+
+
+def parse_pairs(text: str) -> list[dict]:
+    """Farms pasted as text. Accepts both
+         ID: 24-40798340            and      24-40798340:password
+         Password: secret
+    (blocks may be separated by blank lines; lines can be mixed)."""
+    items: list[dict] = []
+    pending: dict | None = None
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line:
+            continue
+        m_id, m_pw = _ID_RE.match(line), _PW_RE.match(line)
+        if m_id:
+            if pending:
+                items.append(pending)
+            pending = {"line": n, "token_id": m_id.group(1).strip(), "password": ""}
+            continue
+        if m_pw:
+            if pending and not pending["password"]:
+                pending["password"] = m_pw.group(1).strip()
+                items.append(pending)
+                pending = None
+            else:
+                items.append({"line": n, "token_id": "", "password": m_pw.group(1).strip()})
+            continue
+        if pending:
+            items.append(pending)
+            pending = None
+        for sep in (":", ",", ";", "\t", "|", " "):
+            if sep in line:
+                tok, pw = line.split(sep, 1)
+                break
+        else:
+            tok, pw = line, ""
+        items.append({"line": n, "token_id": tok.strip(), "password": pw.strip()})
+    if pending:
+        items.append(pending)
+    return items
 
 
 def parse_csv(data: bytes) -> tuple[list[dict], list[str]]:

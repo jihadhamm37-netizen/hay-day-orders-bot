@@ -536,13 +536,13 @@
   function importModal() {
     let mode = "text";
     const { grid, values } = farmFields(null);
-    const ta = h("textarea", { dir: "ltr", placeholder: "TOKEN-ID-1:password1\nTOKEN-ID-2:password2", autocomplete: "off", spellcheck: "false", style: "min-height:160px" });
+    const ta = h("textarea", { dir: "ltr", placeholder: "ID: 24-40798340\nPassword: كلمة_المرور\n\nID: 24-40798341\nPassword: كلمة_المرور", autocomplete: "off", spellcheck: "false", style: "min-height:160px" });
     const file = h("input", { type: "file", accept: ".csv,text/csv" });
     const report = h("div"), box = h("div"), tabs = h("div", { class: "tabs" });
     const renderMode = () => {
       tabs.replaceChildren(h("button", { class: mode === "text" ? "on" : "", onclick: () => { mode = "text"; renderMode(); } }, "مجموعة بنفس المواصفات"),
         h("button", { class: mode === "csv" ? "on" : "", onclick: () => { mode = "csv"; renderMode(); } }, "ملف CSV"));
-      box.replaceChildren(...(mode === "text" ? [h("p", { class: "small muted" }, "املأ المواصفات المشتركة مرة واحدة، ثم ضع كل مزرعة في سطر: TokenID:كلمة المرور"), grid, field("المزارع", ta)]
+      box.replaceChildren(...(mode === "text" ? [h("p", { class: "small muted" }, "املأ المواصفات المشتركة مرة واحدة، ثم الصق المزارع بصيغة ID: … / Password: … (سطرين لكل مزرعة)، أو كل مزرعة في سطر: TokenID:كلمة المرور"), grid, field("المزارع", ta)]
         : [h("p", { class: "small muted" }, "صف العناوين مطلوب: name,lvl,barn,silo,tools,price,currency,token_id,password,cost,description (الأعمدة الأساسية: lvl, price, token_id, password)"), file]));
       report.replaceChildren();
     };
