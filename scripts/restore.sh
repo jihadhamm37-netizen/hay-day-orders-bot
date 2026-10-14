@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Restore a backup into a database (DESTRUCTIVE for that database):
-#   DATABASE_URL=postgresql://.../hayday ./scripts/restore.sh backups/hayday-20261013-000000.dump
+#   DATABASE_URL=postgresql://.../hdfarm ./scripts/restore.sh backups/<file>.dump
 # Stop the bot first, restore, then start it again with the SAME ENCRYPTION_KEY.
 set -euo pipefail
 FILE="$1"

@@ -20,11 +20,12 @@ ROLES = {
 # permission → roles that have it
 PERMISSIONS = {
     "view": {"owner", "admin", "support"},
-    "deposits": {"owner", "admin", "support"},
     "orders": {"owner", "admin", "support"},
+    "payments": {"owner", "admin", "support"},
+    "chat": {"owner", "admin", "support"},
+    "customers": {"owner", "admin", "support"},
     "catalog": {"owner", "admin"},
-    "users": {"owner", "admin"},
-    "wallet": {"owner", "admin"},
+    "methods": {"owner", "admin"},
     "settings": {"owner", "admin"},
     "admins": {"owner"},
     "backup": {"owner"},

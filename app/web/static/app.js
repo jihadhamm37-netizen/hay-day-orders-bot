@@ -65,12 +65,11 @@
   const q = (o) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v !== "" && v !== null && v !== undefined) p.set(k, v); const s = p.toString(); return s ? "?" + s : ""; };
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
 
-  const ORDER = { pending: ["بانتظار التأكيد", ""], processing: ["قيد المعالجة", "info"], completed: ["مكتمل", "ok"],
-    cancelled: ["ملغي", ""], needs_review: ["يحتاج إلى مراجعة", "danger"] };
-  const DEP = { awaiting_payment: ["بانتظار الدفع", ""], under_review: ["قيد المراجعة", "warn"], approved: ["مقبول", "ok"],
-    rejected: ["مرفوض", "danger"], cancelled: ["ملغي", ""] };
-  const ACC = { available: ["متوفر", "ok"], reserved: ["محجوز", "warn"], sold: ["مباع", "info"], disabled: ["موقوف", ""] };
-  const KIND = { deposit: "شحن رصيد", purchase: "شراء مزرعة", refund: "استرداد", admin_credit: "إضافة من الإدارة", admin_debit: "خصم من الإدارة" };
+  const ORDER = { pending_confirmation: ["بانتظار تأكيد الطلب", ""], awaiting_payment: ["بانتظار الدفع", "warn"], proof_received: ["إثبات الدفع مستلم", "info"],
+    payment_review: ["الدفع قيد المراجعة", "warn"], payment_confirmed: ["الدفع مؤكد", "info"], processing: ["قيد التنفيذ", "info"],
+    delivered: ["تم التسليم", "ok"], cancelled: ["ملغي", ""], rejected: ["مرفوض", "danger"] };
+  const PAY = { pending: ["بانتظار المراجعة", "warn"], approved: ["مقبول", "ok"], rejected: ["مرفوض", "danger"] };
+  const FARM = { available: ["متوفرة", "ok"], reserved: ["محجوزة", "warn"], sold: ["مباعة", "info"], disabled: ["معطلة", ""] };
   const pill = (map, k) => h("span", { class: "pill " + ((map[k] || [])[1] || "") }, (map[k] || [k])[0]);
 
   function modal(title, body, { wide } = {}) {
@@ -110,7 +109,7 @@
   }
 
   // ------------------------------------------------------------- state
-  const state = { me: null, counts: { deposits: 0, review: 0, alerts: 0 }, lastDeposits: null };
+  const state = { me: null, counts: { payments: 0, chats: 0, alerts: 0 }, lastPay: null };
   const can = (p) => state.me && state.me.perms.includes(p);
 
   // ------------------------------------------------------------- login
@@ -154,19 +153,19 @@
 
   // ------------------------------------------------------------- shell
   const NAV = [
-    ["dashboard", "📊", "الرئيسية", "view"],
-    ["deposits", "💰", "طلبات الشحن", "deposits", "deposits"],
-    ["orders", "🧾", "الطلبات", "orders", "review"],
-    ["types", "📦", "الأنواع والمخزون", "view"],
-    ["users", "👥", "المستخدمون والأرصدة", "users"],
-    ["transactions", "💼", "الحركات المالية", "users"],
-    ["alerts", "🔔", "التنبيهات", "view", "alerts"],
+    ["dashboard", "▦", "الرئيسية", "view"],
+    ["chats", "✉", "المحادثات", "chat", "chats"],
+    ["payments", "$", "مراجعة الدفع", "payments", "payments"],
+    ["orders", "≡", "الطلبات", "orders"],
+    ["farms", "◫", "المزارع والمخزون", "view"],
+    ["methods", "⇄", "وسائل الدفع", "view"],
+    ["alerts", "!", "التنبيهات", "view", "alerts"],
     ["-"],
-    ["settings", "⚙️", "الإعدادات والرسائل", "settings"],
-    ["admins", "🛡️", "المشرفون", "admins"],
-    ["audit", "📜", "سجل العمليات", "view"],
-    ["backups", "🗄️", "النسخ الاحتياطي", "backup"],
-    ["account", "👤", "حسابي", "view"],
+    ["settings", "⚙", "الإعدادات والذكاء الاصطناعي", "settings"],
+    ["admins", "◉", "المشرفون", "admins"],
+    ["audit", "☰", "سجل التدقيق", "view"],
+    ["backups", "⤓", "النسخ الاحتياطي", "backup"],
+    ["account", "○", "حسابي", "view"],
   ];
   let mainEl, titleEl, sideEl, navEl;
 
@@ -174,7 +173,7 @@
     ROOT.innerHTML = "";
     navEl = h("nav", { class: "nav" });
     sideEl = h("aside", { class: "side" },
-      h("div", { class: "brand" }, h("div", { class: "brand-mark" }, "🌾"), h("div", null, "متجر المزارع", h("small", null, "لوحة الإدارة"))),
+      h("div", { class: "brand" }, h("div", { class: "brand-mark" }, "HD"), h("div", null, "HD农场", h("small", null, "لوحة الإدارة"))),
       navEl,
       h("div", { class: "nav-sep" }),
       h("div", { class: "nav" }, h("a", { href: "#", onclick: async (e) => { e.preventDefault(); await POST("/auth/logout"); state.me = null; renderLogin(); } },
@@ -196,19 +195,19 @@
   function renderNav() {
     const cur = (location.hash.slice(2) || "dashboard").split("/")[0];
     navEl.replaceChildren(...NAV.filter((n) => n[0] === "-" || can(n[3])).map((n) => n[0] === "-" ? h("div", { class: "nav-sep" }) :
-      h("a", { href: "#/" + n[0], class: cur === n[0] || (cur === "type" && n[0] === "types") || (cur === "user" && n[0] === "users") ? "active" : "" },
+      h("a", { href: "#/" + n[0], class: cur === n[0] || (cur === "chat" && n[0] === "chats") || (cur === "order" && n[0] === "orders") ? "active" : "" },
         h("span", { class: "ico" }, n[1]), n[2], n[4] && state.counts[n[4]] ? h("span", { class: "badge" }, state.counts[n[4]]) : null)));
   }
 
   async function refreshCounts() {
     try {
       const s = await GET("/stats/overview");
-      const prev = state.lastDeposits;
-      state.counts = { deposits: s.deposits.pending_review, review: s.sales.needs_review, alerts: s.unread_alerts };
-      if (prev !== null && s.deposits.pending_review > prev) toast(`💰 طلب شحن جديد بانتظار المراجعة (${s.deposits.pending_review})`);
-      state.lastDeposits = s.deposits.pending_review;
+      const prev = state.lastPay;
+      state.counts = { payments: s.pending_payments, chats: s.customers.taken_over, alerts: s.unread_alerts };
+      if (prev !== null && s.pending_payments > prev) toast(`إثبات دفع جديد بانتظار المراجعة (${s.pending_payments})`);
+      state.lastPay = s.pending_payments;
       renderNav();
-      document.title = (state.counts.deposits ? `(${state.counts.deposits}) ` : "") + "لوحة التحكم";
+      document.title = (s.pending_payments ? `(${s.pending_payments}) ` : "") + "HD农场 — لوحة التحكم";
     } catch { /* ignore */ }
   }
 
@@ -217,6 +216,7 @@
   async function route() {
     if (!state.me) return;
     toggleSide(false);
+    document.querySelectorAll(".modal-bg").forEach((m) => m.remove());
     const [name, arg] = (location.hash.slice(2) || "dashboard").split("/");
     const r = ROUTES[name] || ROUTES.dashboard;
     renderNav();
@@ -228,17 +228,17 @@
   // ========================================================= dashboard
   function barChart(days) {
     const W = 720, H = 220, P = 26, n = days.length;
-    const max = Math.max(1, ...days.map((d) => Math.max(+d.revenue, +d.deposits)));
+    const max = Math.max(1, ...days.map((d) => Math.max(+d.revenue, +d.profit)));
     const bw = (W - P * 2) / n;
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("class", "chart"); svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "الإيرادات والشحن اليومي");
+    svg.setAttribute("aria-label", "الإيراد والربح اليومي");
     const mk = (t, a) => { const e = document.createElementNS(svg.namespaceURI, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
     days.forEach((d, i) => {
       const x = W - P - (i + 1) * bw; // right-to-left: newest on the left edge
-      const rh = (H - P * 2) * (+d.revenue / max), dh = (H - P * 2) * (+d.deposits / max);
+      const rh = (H - P * 2) * (+d.revenue / max), dh = (H - P * 2) * (+d.profit / max);
       const g = mk("g", {});
-      const t = mk("title", {}); t.textContent = `${d.day}\nمبيعات: ${money(d.revenue)} (${d.sales})\nشحن: ${money(d.deposits)}`;
+      const t = mk("title", {}); t.textContent = `${d.day}\nالإيراد: ${money(d.revenue)} (${d.orders} طلب)\nالربح: ${money(d.profit)}`;
       g.append(t, mk("rect", { class: "bar", x: x + bw * .12, y: H - P - rh, width: bw * .38, height: Math.max(rh, 0), rx: 2 }),
         mk("rect", { class: "bar2", x: x + bw * .5, y: H - P - dh, width: bw * .38, height: Math.max(dh, 0), rx: 2 }));
       if (i % 5 === 0 || i === n - 1) { const tx = mk("text", { x: x + bw / 2, y: H - 8, "text-anchor": "middle" }); tx.textContent = d.day.slice(5); g.append(tx); }
@@ -250,447 +250,372 @@
   const kpi = (label, value, sub, cls) => h("div", { class: "card kpi " + (cls || "") }, h("div", { class: "label" }, label),
     h("div", { class: "value num" }, value), sub ? h("div", { class: "sub" }, sub) : null);
 
+  const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+  const cur = (v, c) => h("span", { class: "num" }, money(v) + " " + (c || "USDT"));
+  const specLine = (o) => `المستوى ${o.lvl} · مخزن ${o.barn} · صومعة ${o.silo} · أدوات ${o.tools}`;
+
+  // ========================================================= dashboard
   ROUTES.dashboard = async () => {
     setTitle("نظرة عامة");
-    const [s, days, top, alerts] = await Promise.all([GET("/stats/overview"), GET("/stats/daily?days=30"), GET("/stats/top-types"), GET("/alerts?unread=true")]);
+    const [s, days, top, alerts] = await Promise.all([GET("/stats/overview"), GET("/stats/daily?days=30"), GET("/stats/top-levels"), GET("/alerts?unread=true")]);
+    const usdt = s.sales.find((x) => x.currency === "USDT") || { revenue: 0, profit: 0, today: 0, month: 0, orders: 0, farms: 0, farms_without_cost: 0 };
+    const st = s.orders_by_status;
+    const aiOn = state.me.ai_configured;
     mainEl.replaceChildren(
+      aiOn ? null : h("div", { class: "notice warn" }, "الذكاء الاصطناعي غير مُفعّل: أضف ANTHROPIC_API_KEY في متغيرات الخادم. حتى ذلك الحين تُحوَّل كل الرسائل إلى الإدارة."),
       h("div", { class: "grid kpis" },
-        kpi("إجمالي الإيرادات", money(s.sales.revenue), `${s.sales.completed} عملية بيع مكتملة`),
-        kpi("مبيعات اليوم", money(s.sales.today_revenue), `${s.sales.today_count} عملية`),
-        kpi("آخر 30 يوماً", money(s.sales.month_revenue), "USDT"),
-        kpi("إجمالي المشحون", money(s.deposits.total_deposited), `اليوم: ${money(s.deposits.today_deposited)}`),
-        kpi("شحن بانتظار المراجعة", s.deposits.pending_review, `${money(s.deposits.pending_amount)} USDT`, s.deposits.pending_review ? "warn" : ""),
-        kpi("أرصدة العملاء", money(s.users.balances), `${s.users.with_balance} عميل لديهم رصيد`),
-        kpi("المخزون المتوفر", s.stock.available, `قيمته ${money(s.stock.stock_value)} USDT`),
-        kpi("حسابات مباعة", s.stock.sold, `محجوز ${s.stock.reserved} · موقوف ${s.stock.disabled}`),
-        kpi("طلبات تحتاج مراجعة", s.sales.needs_review, "تسليم فشل أو لم يُؤكد", s.sales.needs_review ? "danger" : ""),
-        kpi("أنواع نفد مخزونها", s.out_of_stock_types, "", s.out_of_stock_types ? "warn" : ""),
-        kpi("المستخدمون", s.users.users, `جدد اليوم: ${s.users.new_today}`),
-        kpi("تعديلات يدوية", money(s.adjustments.credits), `خصم ${money(s.adjustments.debits)} · استرداد ${money(s.adjustments.refunds)}`)),
+        kpi("الإيرادات (USDT)", money(usdt.revenue), `${usdt.orders} طلب مسلّم · ${usdt.farms} مزرعة`),
+        kpi("الأرباح (USDT)", money(usdt.profit), usdt.farms_without_cost ? `${usdt.farms_without_cost} مزرعة بلا تكلفة مسجلة` : "الإيراد − التكلفة"),
+        kpi("اليوم", money(usdt.today), "USDT"),
+        kpi("آخر 30 يوماً", money(usdt.month), "USDT"),
+        kpi("دفعات بانتظار المراجعة", s.pending_payments, "", s.pending_payments ? "warn" : ""),
+        kpi("بانتظار الدفع", (st.awaiting_payment || 0), "مزارع محجوزة مؤقتاً"),
+        kpi("محادثات مع الإدارة", s.customers.taken_over, "الرد الآلي متوقف لها", s.customers.taken_over ? "warn" : ""),
+        kpi("المخزون المتوفر", s.stock.available, `محجوز ${s.stock.reserved} · مباع ${s.stock.sold}`),
+        kpi("العملاء", s.customers.total, `نشطون 24 ساعة: ${s.customers.active_24h} · جدد اليوم: ${s.customers.new_today}`)),
+      s.sales.filter((x) => x.currency !== "USDT").length ? h("div", { class: "notice" }, "عملات أخرى: " + s.sales.filter((x) => x.currency !== "USDT").map((x) => `${x.currency}: إيراد ${money(x.revenue)} / ربح ${money(x.profit)}`).join(" · ")) : null,
       h("div", { class: "grid two" },
         h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "آخر 30 يوماً"), h("span", { style: "flex:1" }),
-          h("div", { class: "legend" }, h("span", null, h("i", { style: "background:var(--brand)" }), "المبيعات"), h("span", null, h("i", { style: "background:var(--accent)" }), "الشحن"))),
+          h("div", { class: "legend" }, h("span", null, h("i", { style: "background:var(--brand)" }), "الإيراد"), h("span", null, h("i", { style: "background:var(--accent)" }), "الربح"))),
           h("div", { class: "card-b" }, barChart(days))),
         h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "تنبيهات جديدة"), h("span", { style: "flex:1" }), h("a", { href: "#/alerts" }, "الكل")),
-          alerts.length ? h("div", { class: "card-b stack" }, alerts.slice(0, 8).map(alertRow)) : h("div", { class: "empty" }, "لا توجد تنبيهات ✅"))),
-      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "الأنواع الأكثر مبيعاً")),
-        table(["النوع", "LVL", "المبيعات", "الإيرادات"], top.map((t) => h("tr", { class: "click", onclick: () => (location.hash = "#/type/" + t.id) },
-          h("td", null, t.name), h("td", { class: "num" }, t.lvl), h("td", { class: "num" }, t.sales), h("td", null, usdt(t.revenue)))), "لا توجد مبيعات بعد")));
+          alerts.length ? h("div", { class: "card-b stack" }, alerts.slice(0, 8).map(alertRow)) : h("div", { class: "empty" }, "لا توجد تنبيهات"))),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "الطلبات حسب الحالة")),
+        h("div", { class: "card-b btn-row" }, Object.entries(ORDER).map(([k, [l, c]]) => h("a", { href: "#/orders/" + k, class: "pill " + c }, `${l}: ${st[k] || 0}`)))),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "المستويات الأكثر مبيعاً")),
+        table(["المستوى", "المزارع", "الإيراد"], top.map((t) => h("tr", null, h("td", { class: "num" }, t.lvl), h("td", { class: "num" }, t.farms), h("td", null, cur(t.revenue, t.currency)))), "لا توجد مبيعات بعد")));
   };
   function alertRow(a) {
     const cls = { error: "danger", warning: "warn", info: "" }[a.level];
-    return h("div", { class: "notice " + cls }, h("div", null, a.message), h("div", { class: "small muted" }, dt(a.created_at)));
+    return h("div", { class: "notice " + cls }, h("div", { class: "wrap" }, a.message), h("div", { class: "small muted" }, dt(a.created_at)));
   }
 
+  // ============================================================== chats
+  ROUTES.chats = async () => {
+    setTitle("المحادثات");
+    let waiting = false, page = 0;
+    const search = h("input", { type: "search", placeholder: "Telegram ID أو الاسم أو @username", dir: "auto" });
+    const tabs = h("div", { class: "tabs" });
+    const body = h("div");
+    const aiState = (await GET("/ai/status")).enabled;
+    const aiBtn = h("button", { class: "btn " + (aiState ? "danger" : "primary"), onclick: async () => {
+      await run(() => POST("/ai/toggle", { enabled: !aiState }), aiState ? "تم إيقاف الرد الآلي لجميع العملاء" : "تم تشغيل الرد الآلي"); route(); } },
+      aiState ? "إيقاف الرد الآلي مؤقتاً (للجميع)" : "تشغيل الرد الآلي");
+    const renderTabs = () => tabs.replaceChildren(...[[false, "كل العملاء"], [true, "محوّلة للإدارة"]].map(([k, l]) =>
+      h("button", { class: waiting === k ? "on" : "", onclick: () => { waiting = k; page = 0; renderTabs(); load(); } }, l)));
+    const load = async () => {
+      const items = await GET("/customers" + q({ q: search.value.trim(), waiting: waiting || "", page }));
+      body.replaceChildren(table(["العميل", "آخر رسالة", "الرد", "المشتريات", "آخر نشاط"], items.map((c) => h("tr", { class: "click", onclick: () => (location.hash = "#/chat/" + c.id) },
+        h("td", null, h("b", null, c.first_name || "—"), h("div", { class: "small muted mono" }, (c.username ? "@" + c.username + " · " : "") + c.id)),
+        h("td", { class: "wrap small" }, c.last_role === "user" ? h("b", null, (c.last_message || "").slice(0, 80)) : (c.last_message || "").slice(0, 80)),
+        h("td", null, c.ai_paused ? h("span", { class: "pill warn" }, "الإدارة") : h("span", { class: "pill ok" }, "آلي"), c.is_banned ? h("span", { class: "pill danger" }, "محظور") : null),
+        h("td", null, `${c.delivered_orders} · `, cur(c.spent)), h("td", null, dt(c.last_message_at)))), "لا توجد محادثات"),
+      pager(page, items.length, 50, (p) => { page = p; load(); }));
+    };
+    search.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
+    renderTabs();
+    mainEl.replaceChildren(
+      h("div", { class: "card" }, h("div", { class: "card-b btn-row" }, h("span", null, "حالة الرد الآلي: ", aiState ? h("span", { class: "pill ok" }, "يعمل") : h("span", { class: "pill danger" }, "متوقف")), h("span", { style: "flex:1" }), can("chat") ? aiBtn : null)),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, tabs, h("span", { style: "flex:1" }), search), body));
+    await load();
+  };
+
+  ROUTES.chat = async (id) => {
+    const c = await GET("/customers/" + id);
+    setTitle(`${c.first_name || "عميل"} ${c.username ? "@" + c.username : ""}`);
+    const roleLbl = { user: "العميل", assistant: "البوت", admin: "الإدارة", system: "النظام" };
+    const log = h("div", { class: "chatlog" }, c.messages.map((m) => h("div", { class: "msg " + m.role },
+      h("div", { class: "msg-h" }, roleLbl[m.role] + (m.author ? ` (${m.author})` : ""), " · ", dt(m.created_at)), h("div", { class: "msg-b" }, m.content))));
+    const input = h("textarea", { placeholder: "اكتب ردك للعميل…", style: "min-height:70px" });
+    const send = async () => {
+      if (!input.value.trim()) return;
+      await run(() => POST(`/customers/${id}/message`, { text: input.value, takeover: true }), "تم الإرسال");
+      ROUTES.chat(id);
+    };
+    const notes = h("textarea", { style: "min-height:60px" }); notes.value = c.notes || "";
+    mainEl.replaceChildren(
+      h("div", { class: "btn-row" }, h("a", { class: "btn sm", href: "#/chats" }, "→ المحادثات"),
+        c.ai_paused ? h("button", { class: "btn sm primary", onclick: async () => { await run(() => POST(`/customers/${id}/ai`, { enabled: true }), "عاد الرد الآلي لهذا العميل"); ROUTES.chat(id); } }, "إعادة الرد الآلي")
+          : h("button", { class: "btn sm danger", onclick: async () => { await run(() => POST(`/customers/${id}/ai`, { enabled: false }), "تم تحويل المحادثة للإدارة"); ROUTES.chat(id); } }, "تحويل المحادثة للإدارة (إيقاف الرد الآلي)"),
+        can("customers") ? h("button", { class: "btn sm " + (c.is_banned ? "" : "danger"), onclick: async () => { await run(() => POST(`/customers/${id}/ban`, { banned: !c.is_banned }), "تم"); ROUTES.chat(id); } }, c.is_banned ? "فك الحظر" : "حظر") : null),
+      h("div", { class: "grid two" },
+        h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "المحادثة"), h("span", { style: "flex:1" }), c.ai_paused ? h("span", { class: "pill warn" }, "تتولاها الإدارة") : h("span", { class: "pill ok" }, "الرد الآلي يعمل")),
+          h("div", { class: "card-b" }, log, h("div", { class: "stack", style: "margin-top:12px" }, input, h("div", { class: "btn-row" },
+            h("button", { class: "btn primary", onclick: send }, "إرسال للعميل"), h("span", { class: "small muted" }, "إرسال رد يحوّل المحادثة للإدارة تلقائياً."))))),
+        h("div", { class: "stack" },
+          h("div", { class: "card" }, h("div", { class: "card-b" }, h("dl", { class: "kv" }, h("dt", null, "Telegram ID"), h("dd", { class: "mono" }, c.id),
+            h("dt", null, "اللغة"), h("dd", null, c.lang), h("dt", null, "انضم"), h("dd", null, dt(c.created_at)), h("dt", null, "آخر نشاط"), h("dd", null, dt(c.last_seen_at))))),
+          h("div", { class: "card" }, h("div", { class: "card-h" }, h("h3", null, "طلبات العميل")),
+            table(["الطلب", "الحالة", "الإجمالي"], c.orders.map((o) => h("tr", { class: "click", onclick: () => (location.hash = "#/order/" + o.id) },
+              h("td", { class: "mono" }, o.ref), h("td", null, pill(ORDER, o.status)), h("td", null, cur(o.total, o.currency)))), "لا توجد طلبات")),
+          h("div", { class: "card" }, h("div", { class: "card-h" }, h("h3", null, "ملاحظات داخلية")), h("div", { class: "card-b" }, notes,
+            h("button", { class: "btn sm", style: "margin-top:8px", onclick: () => run(() => POST(`/customers/${id}/notes`, { notes: notes.value }), "تم الحفظ") }, "حفظ"))))));
+    log.scrollTop = log.scrollHeight;
+  };
+
+  // ============================================================ payments
+  ROUTES.payments = async () => {
+    setTitle("مراجعة الدفع");
+    let status = "pending", page = 0;
+    const search = h("input", { type: "search", placeholder: "رقم الطلب / رقم العملية / Telegram ID", dir: "auto", style: "max-width:280px" });
+    const tabs = h("div", { class: "tabs" });
+    const body = h("div");
+    const renderTabs = () => tabs.replaceChildren(...[["pending", "بانتظار المراجعة"], ["approved", "مقبولة"], ["rejected", "مرفوضة"], ["", "الكل"]]
+      .map(([k, l]) => h("button", { class: status === k ? "on" : "", onclick: () => { status = k; page = 0; renderTabs(); load(); } }, l)));
+    const load = async () => {
+      const items = await GET("/payments" + q({ status, search: search.value.trim(), page }));
+      body.replaceChildren(table(["الطلب", "العميل", "المبلغ", "الوسيلة", "رقم العملية", "الحالة", "التاريخ"], items.map((p) => h("tr", { class: "click", onclick: () => paymentModal(p.id, load) },
+        h("td", { class: "mono" }, p.order_ref), h("td", null, h("span", { class: "num" }, p.customer_id), p.username ? h("div", { class: "small muted" }, "@" + p.username) : null),
+        h("td", null, cur(p.amount, p.currency)), h("td", null, p.method_name), h("td", { class: "mono" }, p.txid || "—"),
+        h("td", null, pill(PAY, p.status)), h("td", null, dt(p.created_at)))), "لا توجد دفعات"),
+      pager(page, items.length, 50, (x) => { page = x; load(); }));
+    };
+    search.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
+    renderTabs();
+    mainEl.replaceChildren(h("div", { class: "notice warn" }, "لا توافق على أي دفعة قبل التأكد من وصول المبلغ فعلياً في حسابك ومطابقة المبلغ ورقم العملية. عند القبول تُسلَّم المزارع للعميل تلقائياً."),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, tabs, h("span", { style: "flex:1" }), search), body));
+    await load();
+  };
+  async function paymentModal(id, reload) {
+    const p = await GET("/payments/" + id);
+    const reason = h("input", { type: "text", placeholder: "سبب الرفض — يظهر للعميل" });
+    const closeOrder = h("input", { type: "checkbox" });
+    const quick = ["لم يصل المبلغ", "المبلغ لا يطابق الطلب", "الإثبات غير واضح أو غير صحيح", "رقم العملية غير صحيح"];
+    const acts = p.status === "pending" ? h("div", { class: "stack" },
+      h("button", { class: "btn primary", onclick: async () => { if (!(await confirmBox(`تأكيد وصول ${money(p.amount)} ${p.currency}؟ سيتم تسليم المزارع للعميل فوراً.`))) return;
+        await run(() => POST(`/payments/${id}/approve`), "تم قبول الدفع وتسليم الطلب"); m.close(); reload(); refreshCounts(); } }, "قبول الدفع وتسليم الطلب"),
+      h("div", { class: "card", style: "padding:12px" }, field("سبب الرفض", reason), h("div", { class: "btn-row", style: "margin-bottom:10px" }, quick.map((x) => h("button", { class: "btn sm", onclick: () => { reason.value = x; } }, x))),
+        h("label", { class: "switch f" }, closeOrder, "رفض الطلب بالكامل وإلغاء الحجز (بدلاً من السماح بإرسال إثبات جديد)"),
+        h("button", { class: "btn danger", onclick: async () => { await run(() => POST(`/payments/${id}/reject`, { reason: reason.value, close_order: closeOrder.checked }), "تم الرفض"); m.close(); reload(); refreshCounts(); } }, "رفض"))) : null;
+    const m = modal(`دفعة الطلب ${p.order_ref}`, h("div", { class: "grid two" },
+      h("div", null, p.proof_file_id ? h("img", { class: "proof", src: `/api/payments/${id}/proof`, alt: "إثبات الدفع", onerror: (e) => e.target.replaceWith(h("div", { class: "notice warn" }, "تعذر تحميل الصورة.")) }) : h("div", { class: "empty" }, "لا توجد صورة")),
+      h("div", { class: "stack" }, h("dl", { class: "kv" }, h("dt", null, "الحالة"), h("dd", null, pill(PAY, p.status)), h("dt", null, "حالة الطلب"), h("dd", null, pill(ORDER, p.order_status)),
+        h("dt", null, "العميل"), h("dd", null, h("a", { href: "#/chat/" + p.customer_id }, String(p.customer_id)), p.username ? " @" + p.username : ""),
+        h("dt", null, "المبلغ"), h("dd", null, cur(p.amount, p.currency)), h("dt", null, "الوسيلة"), h("dd", null, `${p.method_name} (${p.account})`),
+        h("dt", null, "رقم العملية"), h("dd", { class: "mono" }, p.txid || "—"), h("dt", null, "الطلب"), h("dd", null, `${specLine(p.offer)} × ${p.quantity}`),
+        p.reviewed_by ? [h("dt", null, "روجع بواسطة"), h("dd", null, `${p.reviewed_by} — ${dt(p.reviewed_at)}`)] : null,
+        p.reject_reason ? [h("dt", null, "سبب الرفض"), h("dd", null, p.reject_reason)] : null), acts)), { wide: true });
+  }
+
+  // ============================================================== orders
+  ROUTES.orders = async (initial) => {
+    setTitle("الطلبات");
+    let status = initial || "", page = 0;
+    const search = h("input", { type: "search", placeholder: "رقم الطلب أو Telegram ID", dir: "auto", style: "max-width:240px" });
+    const sel = h("select", { style: "max-width:220px" }, h("option", { value: "" }, "كل الحالات"), Object.entries(ORDER).map(([k, [l]]) => h("option", { value: k }, l)));
+    sel.value = status;
+    const body = h("div");
+    const load = async () => {
+      const items = await GET("/orders" + q({ status, search: search.value.trim(), page }));
+      body.replaceChildren(table(["الطلب", "العميل", "المزرعة", "الكمية", "الإجمالي", "الحالة", "التاريخ"], items.map((o) => h("tr", { class: "click", onclick: () => (location.hash = "#/order/" + o.id) },
+        h("td", { class: "mono" }, o.ref), h("td", null, h("span", { class: "num" }, o.customer_id), o.username ? h("div", { class: "small muted" }, "@" + o.username) : null),
+        h("td", { class: "small" }, specLine(o.offer)), h("td", { class: "num" }, o.quantity), h("td", null, cur(o.total, o.currency)),
+        h("td", null, pill(ORDER, o.status), o.failure_reason ? h("div", { class: "small", style: "color:var(--danger)" }, "فشل التسليم") : null), h("td", null, dt(o.created_at)))), "لا توجد طلبات"),
+      pager(page, items.length, 50, (x) => { page = x; load(); }));
+    };
+    sel.addEventListener("change", () => { status = sel.value; page = 0; load(); });
+    search.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
+    mainEl.replaceChildren(h("div", { class: "card" }, h("div", { class: "card-h" }, h("div", { class: "filters", style: "flex:1" }, sel, search)), body));
+    await load();
+  };
+
+  ROUTES.order = async (id) => {
+    const o = await GET("/orders/" + id);
+    setTitle(`الطلب ${o.ref}`);
+    const acts = h("div", { class: "btn-row" });
+    const reasonAct = (label, path, cls) => h("button", { class: "btn " + cls, onclick: async () => {
+      const r = prompt("السبب (يظهر للعميل):"); if (!r) return;
+      await run(() => POST(`/orders/${id}/${path}`, { reason: r }), "تم"); ROUTES.order(id); } }, label);
+    if (["pending_confirmation", "awaiting_payment", "proof_received", "payment_review", "payment_confirmed"].includes(o.status)) {
+      acts.append(reasonAct("إلغاء الطلب", "cancel", "danger"), reasonAct("رفض الطلب", "reject", "danger"));
+    }
+    if (["payment_confirmed", "processing", "delivered"].includes(o.status)) {
+      acts.append(h("button", { class: "btn", onclick: async () => { const r = await run(() => POST(`/orders/${id}/redeliver`)); toast(r.delivered ? "تم إرسال البيانات" : "فشل الإرسال", !r.delivered); ROUTES.order(id); } },
+        o.status === "delivered" ? "إعادة إرسال البيانات للعميل" : "تسليم / إعادة محاولة التسليم"));
+    }
+    const msg = h("input", { type: "text", placeholder: "رسالة مخصصة للعميل (اختياري)" });
+    acts.append(h("button", { class: "btn", onclick: async () => { await run(() => POST(`/orders/${id}/notify`, { text: msg.value }), "تم إرسال الإشعار"); msg.value = ""; } }, "إرسال إشعار بالحالة للعميل"));
+    mainEl.replaceChildren(
+      h("div", { class: "btn-row" }, h("a", { class: "btn sm", href: "#/orders" }, "→ الطلبات"), h("a", { class: "btn sm", href: "#/chat/" + o.customer_id }, "محادثة العميل")),
+      h("div", { class: "grid kpis" }, kpi("الحالة", ORDER[o.status][0]), kpi("الإجمالي", money(o.total), o.currency), kpi("الكمية", o.quantity, `سعر الوحدة ${money(o.unit_price)}`),
+        kpi("العميل", o.customer_id, o.username ? "@" + o.username : (o.first_name || ""))),
+      o.failure_reason ? h("div", { class: "notice danger" }, o.failure_reason) : null,
+      o.reason ? h("div", { class: "notice" }, "السبب: " + o.reason) : null,
+      h("div", { class: "card" }, h("div", { class: "card-b stack" }, h("dl", { class: "kv" },
+        h("dt", null, "المزرعة"), h("dd", null, `${o.offer.name} — ${specLine(o.offer)}`),
+        h("dt", null, "الوسيلة"), h("dd", null, o.method_name || "—"),
+        h("dt", null, "محجوز حتى"), h("dd", null, dt(o.reserved_until)), h("dt", null, "أُنشئ"), h("dd", null, dt(o.created_at)),
+        h("dt", null, "أُكّد"), h("dd", null, dt(o.confirmed_at)), h("dt", null, "دُفع"), h("dd", null, dt(o.paid_at)), h("dt", null, "سُلّم"), h("dd", null, dt(o.delivered_at))),
+        msg, acts)),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "المزارع المرتبطة")),
+        table(["#", "Token ID (مخفي)", "السعر", "التكلفة", "حالة المزرعة", "نشطة في الطلب"], o.items.map((i) => h("tr", null, h("td", { class: "num" }, i.farm_id), h("td", { class: "mono" }, i.token_hint),
+          h("td", null, money(i.price)), h("td", null, i.cost == null ? "—" : money(i.cost)), h("td", null, pill(FARM, i.status)), h("td", null, i.active ? "نعم" : "لا"))), "لم تُحجز مزارع بعد")),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "الدفعات")),
+        table(["#", "المبلغ", "الوسيلة", "رقم العملية", "الحالة", "سبب الرفض"], o.payments.map((p) => h("tr", { class: "click", onclick: () => paymentModal(p.id, () => ROUTES.order(id)) },
+          h("td", { class: "num" }, p.id), h("td", null, cur(p.amount, p.currency)), h("td", null, p.method_name), h("td", { class: "mono" }, p.txid || "—"), h("td", null, pill(PAY, p.status)), h("td", { class: "small" }, p.reject_reason || ""))), "لا توجد دفعات")),
+      h("p", { class: "small muted" }, "Token ID وكلمة المرور لا تُعرض في اللوحة — تصل للعميل فقط بعد تأكيد الدفع."));
+  };
+
+  // =============================================================== farms
+  ROUTES.farms = async () => {
+    setTitle("المزارع والمخزون");
+    let status = "available", page = 0;
+    const selected = new Set();
+    const f = { min_level: h("input", { type: "text", placeholder: "أقل مستوى", dir: "ltr", inputmode: "numeric" }), max_level: h("input", { type: "text", placeholder: "أعلى مستوى", dir: "ltr", inputmode: "numeric" }),
+      min_price: h("input", { type: "text", placeholder: "أقل سعر", dir: "ltr" }), max_price: h("input", { type: "text", placeholder: "أعلى سعر", dir: "ltr" }),
+      search: h("input", { type: "search", placeholder: "رقم أو اسم أو Token ID كامل", dir: "auto" }) };
+    const tabs = h("div", { class: "tabs" });
+    const body = h("div"), bulk = h("div", { class: "btn-row" });
+    const summary = await GET("/farms/summary");
+    const renderTabs = () => tabs.replaceChildren(...[["available", `متوفرة (${summary.stock.available})`], ["reserved", `محجوزة (${summary.stock.reserved})`], ["sold", `مباعة (${summary.stock.sold})`], ["disabled", `معطلة (${summary.stock.disabled})`], ["", "الكل"]]
+      .map(([k, l]) => h("button", { class: status === k ? "on" : "", onclick: () => { status = k; page = 0; selected.clear(); renderTabs(); load(); } }, l)));
+    const renderBulk = () => {
+      bulk.replaceChildren();
+      if (!can("catalog") || !selected.size) return;
+      const act = async (action) => { const r = await run(() => POST("/farms/bulk", { ids: [...selected], action })); toast(`تم: ${r.done}` + (r.skipped ? ` — تخطي ${r.skipped} (مرتبطة بطلبات)` : "")); selected.clear(); route(); };
+      bulk.append(h("span", { class: "muted small" }, `محدد: ${selected.size}`), h("button", { class: "btn sm", onclick: () => act("disable") }, "تعطيل"), h("button", { class: "btn sm", onclick: () => act("enable") }, "تفعيل"),
+        h("button", { class: "btn sm danger", onclick: async () => { if (await confirmBox(`حذف ${selected.size} مزرعة؟ لا يمكن حذف المرتبطة بطلبات.`, { danger: true })) act("delete"); } }, "حذف"));
+    };
+    const load = async () => {
+      const items = await GET("/farms" + q({ status, page, ...Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value.trim()])) }));
+      const editable = (x) => ["available", "disabled"].includes(x.status);
+      body.replaceChildren(table(["", "#", "الاسم", "المستوى", "مخزن", "صومعة", "أدوات", "السعر", "التكلفة", "Token ID", "الحالة", "الطلب", ""], items.map((x) => h("tr", null,
+        h("td", null, can("catalog") && editable(x) ? h("input", { type: "checkbox", checked: selected.has(x.id), onchange: (e) => { e.target.checked ? selected.add(x.id) : selected.delete(x.id); renderBulk(); } }) : ""),
+        h("td", { class: "num" }, x.id), h("td", null, x.name), h("td", { class: "num" }, x.lvl), h("td", { class: "num" }, x.barn), h("td", { class: "num" }, x.silo), h("td", { class: "num" }, x.tools),
+        h("td", null, cur(x.price, x.currency)), h("td", null, x.cost == null ? "—" : money(x.cost)), h("td", { class: "mono" }, x.token_hint), h("td", null, pill(FARM, x.status)),
+        h("td", { class: "mono" }, x.order_ref || "—"),
+        h("td", null, can("catalog") && editable(x) ? h("div", { class: "btn-row", style: "flex-wrap:nowrap" }, h("button", { class: "btn sm", onclick: () => farmForm(x) }, "تعديل"),
+          h("button", { class: "btn sm danger", onclick: async () => { if (await confirmBox("حذف هذه المزرعة نهائياً؟", { danger: true })) { await run(() => api("DELETE", "/farms/" + x.id), "تم الحذف"); route(); } } }, "حذف")) : ""))),
+        "لا توجد مزارع"), pager(page, items.length, 50, (p) => { page = p; load(); }));
+      renderBulk();
+    };
+    Object.values(f).forEach((i) => i.addEventListener("input", debounce(() => { page = 0; load(); }, 400)));
+    renderTabs();
+    mainEl.replaceChildren(
+      h("div", { class: "btn-row" }, can("catalog") ? h("button", { class: "btn primary", onclick: () => farmForm() }, "＋ مزرعة واحدة") : null,
+        can("catalog") ? h("button", { class: "btn", onclick: importModal }, "إضافة مجموعة / استيراد CSV") : null),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "العروض المتوفرة كما يراها البوت")),
+        table(["الاسم", "المستوى", "مخزن", "صومعة", "أدوات", "السعر", "المتوفر"], summary.offers.map((o) => h("tr", null, h("td", null, o.name), h("td", { class: "num" }, o.lvl), h("td", { class: "num" }, o.barn), h("td", { class: "num" }, o.silo), h("td", { class: "num" }, o.tools), h("td", null, cur(o.price, o.currency)), h("td", { class: "num" }, o.available))), "لا يوجد مخزون متوفر")),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, tabs), h("div", { class: "card-b" }, h("div", { class: "filters" }, Object.values(f)), h("div", { style: "margin-top:10px" }, bulk)), body));
+    await load();
+  };
+
+  function farmFields(x) {
+    const i = { name: h("input", { type: "text", value: x?.name || "" }), lvl: h("input", { type: "number", min: 1, value: x?.lvl ?? "", dir: "ltr" }),
+      barn: h("input", { type: "number", min: 0, value: x?.barn ?? 0, dir: "ltr" }), silo: h("input", { type: "number", min: 0, value: x?.silo ?? 0, dir: "ltr" }),
+      tools: h("input", { type: "number", min: 0, value: x?.tools ?? 0, dir: "ltr" }), price: h("input", { type: "text", inputmode: "decimal", value: x?.price ?? "", dir: "ltr" }),
+      currency: h("input", { type: "text", value: x?.currency || "USDT", dir: "ltr" }), cost: h("input", { type: "text", inputmode: "decimal", value: x?.cost ?? "", dir: "ltr", placeholder: "اختياري — لحساب الربح" }),
+      description: h("textarea", { style: "min-height:60px" }) };
+    i.description.value = x?.description || "";
+    const grid = h("div", null, field("الاسم", i.name), h("div", { class: "form-grid" }, field("المستوى", i.lvl), field("المخزن", i.barn), field("الصومعة", i.silo), field("الأدوات", i.tools),
+      field("السعر", i.price), field("العملة", i.currency), field("التكلفة (للأرباح)", i.cost)), field("الوصف (يراه البوت ويذكره للعميل)", i.description));
+    const values = () => ({ name: i.name.value, lvl: i.lvl.value, barn: i.barn.value, silo: i.silo.value, tools: i.tools.value, price: i.price.value, currency: i.currency.value, cost: i.cost.value, description: i.description.value });
+    return { grid, values };
+  }
+
+  function farmForm(x) {
+    const { grid, values } = farmFields(x);
+    const tok = h("input", { type: "text", dir: "ltr", autocomplete: "off", placeholder: x ? "اتركه فارغاً لعدم التغيير" : "" });
+    const pw = h("input", { type: "text", dir: "ltr", autocomplete: "off", placeholder: x ? "اتركه فارغاً لعدم التغيير" : "" });
+    const st = h("select", null, h("option", { value: "available" }, "متوفرة"), h("option", { value: "disabled" }, "معطلة")); st.value = x?.status || "available";
+    const form = h("form", null, grid, h("div", { class: "form-grid" }, field("Token ID", tok), field("كلمة المرور", pw)), x ? field("الحالة", st) : null,
+      h("p", { class: "small muted" }, "تُشفّر Token ID وكلمة المرور فوراً ولا تُعرض مرة أخرى في اللوحة."), h("button", { class: "btn primary", type: "submit" }, x ? "حفظ" : "إضافة"));
+    const m = modal(x ? `تعديل المزرعة #${x.id}` : "مزرعة جديدة", form, { wide: true });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = values();
+      if (tok.value.trim()) body.token_id = tok.value.trim();
+      if (pw.value.trim()) body.password = pw.value.trim();
+      if (x) body.status = st.value;
+      await run(() => x ? api("PATCH", "/farms/" + x.id, body) : POST("/farms", body), "تم الحفظ");
+      m.close(); route();
+    });
+  }
+
+  function importModal() {
+    let mode = "text";
+    const { grid, values } = farmFields(null);
+    const ta = h("textarea", { dir: "ltr", placeholder: "TOKEN-ID-1:password1\nTOKEN-ID-2:password2", autocomplete: "off", spellcheck: "false", style: "min-height:160px" });
+    const file = h("input", { type: "file", accept: ".csv,text/csv" });
+    const report = h("div"), box = h("div"), tabs = h("div", { class: "tabs" });
+    const renderMode = () => {
+      tabs.replaceChildren(h("button", { class: mode === "text" ? "on" : "", onclick: () => { mode = "text"; renderMode(); } }, "مجموعة بنفس المواصفات"),
+        h("button", { class: mode === "csv" ? "on" : "", onclick: () => { mode = "csv"; renderMode(); } }, "ملف CSV"));
+      box.replaceChildren(...(mode === "text" ? [h("p", { class: "small muted" }, "املأ المواصفات المشتركة مرة واحدة، ثم ضع كل مزرعة في سطر: TokenID:كلمة المرور"), grid, field("المزارع", ta)]
+        : [h("p", { class: "small muted" }, "صف العناوين مطلوب: name,lvl,barn,silo,tools,price,currency,token_id,password,cost,description (الأعمدة الأساسية: lvl, price, token_id, password)"), file]));
+      report.replaceChildren();
+    };
+    const send = (preview) => {
+      if (mode === "text") return POST("/farms/import-text", { text: ta.value, defaults: values(), preview });
+      if (!file.files[0]) throw new ApiError("اختر ملفاً.");
+      const fd = new FormData(); fd.append("file", file.files[0]);
+      return api("POST", `/farms/import?preview=${preview}`, fd, true);
+    };
+    const issues = (r) => { const all = [...r.errors, ...r.duplicates_in_file, ...r.duplicates_in_db]; return all.length ? h("ul", { class: "list-issues" }, all.slice(0, 300).map((x) => h("li", null, x))) : null; };
+    const check = async () => { const r = await run(() => send(true));
+      report.replaceChildren(h("div", { class: "notice " + (r.valid ? "" : "warn") }, `صالح: ${r.valid} · أخطاء: ${r.errors.length} · مكرر بالملف: ${r.duplicates_in_file.length} · موجود مسبقاً: ${r.duplicates_in_db.length}`), issues(r),
+        r.valid ? h("button", { class: "btn primary", style: "margin-top:10px", onclick: save }, `حفظ ${r.valid} مزرعة`) : null); };
+    const save = async () => { const r = await run(() => send(false)); toast(`تمت إضافة ${r.inserted} مزرعة`); m.close(); route(); };
+    renderMode();
+    const m = modal("إضافة مزارع", h("div", { class: "stack" }, tabs, box, h("button", { class: "btn", onclick: check }, "فحص قبل الحفظ"), report), { wide: true });
+  }
+
+  // ============================================================= methods
+  ROUTES.methods = async () => {
+    setTitle("وسائل الدفع");
+    const items = await GET("/methods");
+    const form = (x) => {
+      const i = { name: h("input", { type: "text", value: x?.name || "" }), kind: h("select", null, h("option", { value: "binance_pay" }, "Binance Pay"), h("option", { value: "manual" }, "تحويل يدوي"), h("option", { value: "other" }, "أخرى")),
+        account: h("input", { type: "text", dir: "ltr", value: x?.account || "" }), currency: h("input", { type: "text", dir: "ltr", value: x?.currency || "USDT" }),
+        instructions: h("textarea"), require_txid: h("input", { type: "checkbox", checked: x ? x.require_txid : true }), is_active: h("input", { type: "checkbox", checked: x ? x.is_active : true }),
+        sort_order: h("input", { type: "number", value: x?.sort_order ?? 0, dir: "ltr" }) };
+      i.kind.value = x?.kind || "binance_pay"; i.instructions.value = x?.instructions || "";
+      const f = h("form", null, field("الاسم الظاهر للعميل", i.name), h("div", { class: "form-grid" }, field("النوع", i.kind), field("العملة", i.currency), field("الترتيب", i.sort_order)),
+        field("المعرّف / رقم الحساب (Pay ID، محفظة، حساب)", i.account), field("تعليمات الدفع", i.instructions),
+        h("label", { class: "switch f" }, i.require_txid, "طلب رقم العملية من العميل بعد الصورة"), h("label", { class: "switch f" }, i.is_active, "مفعّلة"),
+        h("button", { class: "btn primary", type: "submit" }, "حفظ"));
+      const m = modal(x ? "تعديل وسيلة الدفع" : "وسيلة دفع جديدة", f);
+      f.addEventListener("submit", async (e) => { e.preventDefault();
+        const body = Object.fromEntries(Object.entries(i).map(([k, el]) => [k, el.type === "checkbox" ? el.checked : el.value]));
+        await run(() => x ? api("PATCH", "/methods/" + x.id, body) : POST("/methods", body), "تم الحفظ"); m.close(); route(); });
+    };
+    mainEl.replaceChildren(h("div", { class: "notice" }, "يمكنك إضافة أكثر من وسيلة، وأكثر من معرّف لنفس النوع (مثلاً حسابا Binance Pay). يرى العميل الوسائل المفعّلة بنفس عملة طلبه بعد تأكيد الطلب."),
+      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "الوسائل"), h("span", { style: "flex:1" }), can("methods") ? h("button", { class: "btn primary", onclick: () => form() }, "＋ وسيلة جديدة") : null),
+        table(["الاسم", "النوع", "المعرّف", "العملة", "رقم العملية", "الحالة", ""], items.map((x) => h("tr", null, h("td", null, x.name), h("td", null, { binance_pay: "Binance Pay", manual: "تحويل يدوي", other: "أخرى" }[x.kind]),
+          h("td", { class: "mono" }, x.account), h("td", null, x.currency), h("td", null, x.require_txid ? "مطلوب" : "—"), h("td", null, x.is_active ? h("span", { class: "pill ok" }, "مفعّلة") : h("span", { class: "pill" }, "معطلة")),
+          h("td", null, can("methods") ? h("div", { class: "btn-row", style: "flex-wrap:nowrap" }, h("button", { class: "btn sm", onclick: () => form(x) }, "تعديل"),
+            h("button", { class: "btn sm danger", onclick: async () => { if (await confirmBox("حذف الوسيلة؟", { danger: true })) { await run(() => api("DELETE", "/methods/" + x.id), "تم الحذف"); route(); } } }, "حذف")) : ""))), "لا توجد وسائل")));
+  };
+
+  // ============================================================ settings
+  ROUTES.settings = async () => {
+    setTitle("الإعدادات والذكاء الاصطناعي");
+    const items = await GET("/settings");
+    const inputs = {};
+    const groups = { "الذكاء الاصطناعي": ["ai_enabled", "ai_instructions", "handoff_text"],
+      "معلومات المتجر التي يعتمد عليها البوت": ["store_name", "store_info", "warranty_policy", "delivery_policy", "payment_policy", "extra_faq"],
+      "قواعد الطلبات": ["reservation_minutes", "max_quantity", "max_open_orders"] };
+    const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+    const cards = Object.entries(groups).map(([title, keys]) => h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, title)), h("div", { class: "card-b" },
+      keys.filter((k) => byKey[k]).map((k) => { const s = byKey[k]; let el;
+        if (s.kind === "bool") { el = h("input", { type: "checkbox", checked: s.value === "true" }); inputs[k] = el; return h("label", { class: "switch f" }, el, s.label); }
+        el = s.kind === "longtext" ? h("textarea") : h("input", { type: "text", dir: s.kind === "int" ? "ltr" : "auto" }); el.value = s.value; inputs[k] = el; return field(s.label, el); }))));
+    mainEl.replaceChildren(
+      state.me.ai_configured ? h("div", { class: "notice" }, "البوت يجيب فقط من بيانات المخزون والطلبات الحقيقية ومن النصوص أدناه. لا يستطيع تغيير الأسعار أو تأكيد الدفع.")
+        : h("div", { class: "notice warn" }, "مفتاح ANTHROPIC_API_KEY غير مضبوط على الخادم — الرد الآلي لا يعمل حالياً، وكل الرسائل تُحوَّل للإدارة."),
+      ...cards, h("div", { class: "btn-row" }, h("button", { class: "btn primary", onclick: async () => {
+        const body = {}; for (const [k, el] of Object.entries(inputs)) body[k] = el.type === "checkbox" ? el.checked : el.value;
+        await run(() => api("PUT", "/settings", body), "تم الحفظ — يُطبق فوراً"); } }, "حفظ الإعدادات")));
+  };
   // ============================================================ alerts
   ROUTES.alerts = async () => {
     setTitle("التنبيهات");
     const items = await GET("/alerts");
-    mainEl.replaceChildren(h("div", { class: "btn-row" }, h("button", { class: "btn", onclick: async () => { await run(() => POST("/alerts/read"), "تم"); refreshCounts(); route(); } }, "✔️ تعليم الكل كمقروء")),
+    mainEl.replaceChildren(h("div", { class: "btn-row" }, h("button", { class: "btn", onclick: async () => { await run(() => POST("/alerts/read"), "تم"); refreshCounts(); route(); } }, "تعليم الكل كمقروء")),
       h("div", { class: "card" }, table(["", "التنبيه", "النوع", "الوقت"], items.map((a) => h("tr", null,
         h("td", null, a.is_read ? "" : h("span", { class: "badge" }, "جديد")), h("td", { class: "wrap" }, a.message),
         h("td", null, pill({ error: ["خطأ", "danger"], warning: ["تحذير", "warn"], info: ["معلومة", "info"] }, a.level)), h("td", null, dt(a.created_at)))))));
-  };
-
-  // ============================================================= types
-  ROUTES.types = async () => {
-    setTitle("أنواع المزارع والمخزون");
-    const f = { lvl: h("input", { type: "text", placeholder: "LVL (مثال: >=70)", dir: "ltr" }), barn: h("input", { type: "text", placeholder: "Barn", dir: "ltr" }),
-      silo: h("input", { type: "text", placeholder: "Silo", dir: "ltr" }), tools: h("input", { type: "text", placeholder: "Tools (أدوات)", dir: "ltr" }), price: h("input", { type: "text", placeholder: "السعر (مثال: <=15)", dir: "ltr" }) };
-    const body = h("div");
-    const load = async () => {
-      const items = await GET("/types" + q({ lvl: f.lvl.value.trim(), barn: f.barn.value.trim(), silo: f.silo.value.trim(), tools: f.tools.value.trim(), price: f.price.value.trim() }));
-      const tools = (t) => h("td", { onclick: (ev) => ev.stopPropagation() }, h("div", { class: "btn-row", style: "flex-wrap:nowrap" },
-        h("a", { class: "btn sm", href: "#/type/" + t.id, title: "فتح وإضافة حسابات" }, "فتح"),
-        can("catalog") ? h("button", { class: "btn sm", onclick: () => typeForm(t) }, "تعديل") : null,
-        can("catalog") ? h("button", { class: "btn sm", onclick: async () => { await run(() => api("PATCH", "/types/" + t.id, { is_active: !t.is_active }), t.is_active ? "تم إيقاف البيع" : "تم تفعيل البيع"); load(); } }, t.is_active ? "إيقاف" : "تفعيل") : null,
-        can("catalog") ? h("button", { class: "btn sm danger", onclick: () => deleteType(t, load) }, "حذف") : null));
-      body.replaceChildren(table(["", "النوع", "LVL", "Barn", "Silo", "Tools", "السعر", "متوفر", "محجوز", "مباع", "موقوف", "البيع"],
-        items.map((t) => h("tr", { class: "click", onclick: () => (location.hash = "#/type/" + t.id) },
-          tools(t), h("td", null, h("b", null, t.name)), h("td", { class: "num" }, t.lvl), h("td", { class: "num" }, t.barn), h("td", { class: "num" }, t.silo), h("td", { class: "num" }, t.tools),
-          h("td", null, usdt(t.price)), h("td", null, h("span", { class: "pill " + (t.available_raw ? "ok" : "danger") }, t.available_raw)),
-          h("td", { class: "num" }, t.reserved), h("td", { class: "num" }, t.sold), h("td", { class: "num" }, t.disabled),
-          h("td", null, t.is_active ? h("span", { class: "pill ok" }, "مفعّل") : h("span", { class: "pill" }, "موقوف")))), "لا توجد أنواع — أضف أول نوع"));
-    };
-    Object.values(f).forEach((i) => i.addEventListener("input", debounce(load, 350)));
-    mainEl.replaceChildren(h("div", { class: "card" }, h("div", { class: "card-h" }, h("div", { class: "filters", style: "flex:1" }, Object.values(f)),
-      can("catalog") ? h("button", { class: "btn primary", onclick: () => typeForm() }, "＋ نوع جديد") : null), body));
-    await load();
-  };
-  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
-
-  async function deleteType(t, after) {
-    const msg = t.total
-      ? `حذف «${t.name}»؟ سيتم حذف الحسابات غير المباعة (${t.available_raw + t.disabled}) نهائياً، ويُخفى النوع من البوت واللوحة، وتبقى المزارع المباعة (${t.sold}) وطلباتها في السجل.`
-      : `حذف «${t.name}» نهائياً؟ النوع فارغ.`;
-    if (!(await confirmBox(msg, { danger: true, okText: "حذف" }))) return;
-    const r = await run(() => api("DELETE", "/types/" + t.id));
-    toast("تم حذف النوع" + (r && r.accounts_removed ? ` و${r.accounts_removed} حساب غير مباع` : ""));
-    after();
-  }
-
-  function typeForm(t) {
-    const i = {
-      name: h("input", { type: "text", value: t?.name || "", placeholder: "اختياري — مثل: مزرعة VIP" }),
-      lvl: h("input", { type: "number", min: 1, value: t?.lvl ?? "", required: true, dir: "ltr" }),
-      barn: h("input", { type: "number", min: 0, value: t?.barn ?? "", required: true, dir: "ltr" }),
-      silo: h("input", { type: "number", min: 0, value: t?.silo ?? "", required: true, dir: "ltr" }),
-      tools: h("input", { type: "number", min: 0, value: t?.tools ?? 0, dir: "ltr" }),
-      price: h("input", { type: "text", inputmode: "decimal", value: t?.price ?? "", required: true, dir: "ltr" }),
-      sort_order: h("input", { type: "number", value: t?.sort_order ?? 0, dir: "ltr" }),
-      description: h("textarea", { style: "min-height:70px" }), is_active: h("input", { type: "checkbox", checked: t ? t.is_active : true }),
-    };
-    i.description.value = t?.description || "";
-    const form = h("form", null, field("الاسم", i.name), h("div", { class: "form-grid" }, field("LVL — المستوى", i.lvl), field("Barn — المخزن", i.barn),
-      field("Silo — الصومعة", i.silo), field("Tools — أدوات أرض", i.tools), field("السعر USDT", i.price), field("ترتيب العرض", i.sort_order)),
-      field("وصف يظهر للزبون (اختياري)", i.description), h("label", { class: "switch f" }, i.is_active, "متاح للبيع"),
-      t ? h("p", { class: "small muted" }, "تغيير سعر النوع يطبق على كل حساباته عدا ما له سعر خاص.") : null,
-      h("button", { class: "btn primary", type: "submit" }, t ? "حفظ التعديلات" : "إنشاء النوع"));
-    const m = modal(t ? "تعديل النوع" : "نوع مزرعة جديد", form);
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const body = { name: i.name.value, lvl: i.lvl.value, barn: i.barn.value, silo: i.silo.value, tools: i.tools.value, price: i.price.value,
-        sort_order: i.sort_order.value, description: i.description.value, is_active: i.is_active.checked };
-      const r = await run(() => t ? api("PATCH", "/types/" + t.id, body) : POST("/types", body), "تم الحفظ");
-      m.close();
-      if (!t) location.hash = "#/type/" + r.id; else route();
-    });
-  }
-
-  ROUTES.type = async (id) => {
-    const t = await GET("/types/" + id);
-    setTitle(t.name);
-    const accBox = h("div");
-    let status = "available", page = 0, search = "";
-    const selected = new Set();
-    const tabs = h("div", { class: "tabs" });
-    const searchIn = h("input", { type: "search", placeholder: "بحث برقم الحساب أو ID كامل", dir: "auto", style: "max-width:260px" });
-    searchIn.addEventListener("input", debounce(() => { search = searchIn.value.trim(); page = 0; loadAcc(); }, 400));
-    const bulkBar = h("div", { class: "btn-row" });
-    const renderTabs = () => tabs.replaceChildren(...[["available", `متوفر (${t.available_raw})`], ["reserved", `محجوز (${t.reserved})`], ["sold", `مباع (${t.sold})`], ["disabled", `موقوف (${t.disabled})`], ["", "الكل"]]
-      .map(([k, l]) => h("button", { class: status === k ? "on" : "", onclick: () => { status = k; page = 0; selected.clear(); renderTabs(); loadAcc(); } }, l)));
-    const renderBulk = () => {
-      bulkBar.replaceChildren();
-      if (!can("catalog") || !selected.size) return;
-      const ids = [...selected];
-      const act = async (action, extra = {}) => {
-        const r = await run(() => POST("/accounts/bulk", { ids, action, ...extra }));
-        toast(`تم: ${r.done}` + (r.failed.length ? ` — فشل ${r.failed.length}` : ""), !!r.failed.length);
-        selected.clear(); ROUTES.type(id);
-      };
-      bulkBar.append(h("span", { class: "muted small" }, `محدد: ${ids.length}`),
-        h("button", { class: "btn sm", onclick: () => act("disable") }, "⏸ إيقاف"), h("button", { class: "btn sm", onclick: () => act("enable") }, "▶️ إتاحة"),
-        h("button", { class: "btn sm", onclick: () => { const p = prompt("السعر الخاص (اتركه فارغاً لإلغائه):"); if (p !== null) act("price", { price: p.trim() || null }); } }, "💲 سعر خاص"),
-        h("button", { class: "btn sm danger", onclick: async () => { if (await confirmBox(`حذف ${ids.length} حساب؟ لا يمكن حذف المباع.`, { danger: true })) act("delete"); } }, "🗑 حذف"));
-    };
-    const loadAcc = async () => {
-      const items = await GET("/accounts" + q({ type_id: id, status, page, search }));
-      const all = h("input", { type: "checkbox", onchange: (e) => { items.forEach((a) => e.target.checked ? selected.add(a.id) : selected.delete(a.id)); loadAcc(); } });
-      accBox.replaceChildren(table([can("catalog") ? all : "", "#", "ID (مخفي)", "السعر", "الحالة", "الطلب", "أُضيف", ""], items.map((a) => h("tr", null,
-        h("td", null, can("catalog") && ["available", "disabled"].includes(a.status) ? h("input", { type: "checkbox", checked: selected.has(a.id), onchange: (e) => { e.target.checked ? selected.add(a.id) : selected.delete(a.id); renderBulk(); } }) : ""),
-        h("td", { class: "num" }, a.id), h("td", { class: "mono" }, a.login_hint, a.has_photo ? " 🖼" : ""),
-        h("td", null, usdt(a.effective_price), a.custom_price ? h("span", { class: "pill info", style: "margin-inline-start:6px" }, "خاص") : null),
-        h("td", null, pill(ACC, a.status)), h("td", { class: "mono" }, a.order_ref || "—"), h("td", null, dt(a.created_at)),
-        h("td", null, can("catalog") && ["available", "disabled"].includes(a.status) ? h("button", { class: "btn sm", onclick: () => accountForm(a, () => ROUTES.type(id)) }, "تعديل") : ""))),
-      "لا توجد حسابات بهذه الحالة"), pager(page, items.length, 50, (p) => { page = p; loadAcc(); }));
-      renderBulk();
-    };
-    renderTabs();
-    const tierText = t.tiers.length ? t.tiers.map((x) => `${money(x.price)} (${x.available})`).join(" · ") : "—";
-    mainEl.replaceChildren(
-      h("div", { class: "btn-row" }, h("a", { class: "btn sm", href: "#/types" }, "→ كل الأنواع"),
-        can("catalog") ? h("button", { class: "btn sm", onclick: () => typeForm(t) }, "✏️ تعديل البيانات والسعر") : null,
-        can("catalog") ? h("button", { class: "btn sm", onclick: async () => { await run(() => api("PATCH", "/types/" + id, { is_active: !t.is_active }), t.is_active ? "تم إيقاف البيع" : "تم تفعيل البيع"); route(); } }, t.is_active ? "⏸ إيقاف البيع" : "▶️ تفعيل البيع") : null,
-        can("catalog") ? h("button", { class: "btn sm danger", onclick: () => deleteType(t, () => { location.hash = "#/types"; }) }, "حذف النوع") : null),
-      h("div", { class: "grid kpis" }, kpi("LVL", t.lvl), kpi("Barn / Silo", `${t.barn} / ${t.silo}`), kpi("Tools — أدوات أرض", t.tools), kpi("السعر", money(t.price), "USDT"),
-        kpi("متوفر", t.available_raw, "أسعار: " + tierText, t.available_raw ? "" : "danger"), kpi("مباع", t.sold), kpi("الحالة", t.is_active ? "مفعّل" : "موقوف")),
-      photoCard("صورة المزرعة", "تظهر للزبون عند فتح هذا النوع في البوت، وتُرسل مع بيانات الدخول إذا لم يكن للحساب صورة خاصة.",
-        `/api/types/${id}/photo`, !!t.photo_file_id, (fd) => api("POST", `/types/${id}/photo`, fd, true), () => api("DELETE", `/types/${id}/photo`)),
-      can("catalog") ? importCard(id) : null,
-      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "الحسابات"), tabs, h("span", { style: "flex:1" }), searchIn), h("div", { class: "card-b", style: "padding-bottom:0" }, bulkBar), accBox));
-    await loadAcc();
-  };
-
-  function accountForm(a, done) {
-    const st = h("select", null, h("option", { value: "available" }, "متوفر"), h("option", { value: "disabled" }, "موقوف عن البيع"));
-    st.value = a.status;
-    const price = h("input", { type: "text", inputmode: "decimal", dir: "ltr", value: a.custom_price ?? "", placeholder: `سعر النوع: ${money(a.type_price)}` });
-    const note = h("input", { type: "text", value: a.note || "" });
-    const login = h("input", { type: "text", dir: "ltr", placeholder: "اتركه فارغاً لعدم التغيير", autocomplete: "off" });
-    const pass = h("input", { type: "text", dir: "ltr", placeholder: "اتركه فارغاً لعدم التغيير", autocomplete: "off" });
-    const form = h("form", null, field("الحالة", st), field("سعر خاص لهذا الحساب (فارغ = سعر النوع)", price), field("ملاحظة داخلية", note),
-      h("p", { class: "small muted" }, "استبدال بيانات الدخول (تُشفّر فوراً ولا تُعرض مرة أخرى):"), h("div", { class: "form-grid" }, field("ID جديد", login), field("Password جديدة", pass)),
-      h("div", { class: "btn-row" }, h("button", { class: "btn primary", type: "submit" }, "حفظ"),
-        h("button", { class: "btn danger", type: "button", onclick: async () => { if (await confirmBox("حذف هذا الحساب نهائياً؟", { danger: true })) { await run(() => api("DELETE", "/accounts/" + a.id), "تم الحذف"); m.close(); done(); } } }, "حذف")));
-    const pfile = h("input", { type: "file", accept: "image/*" });
-    pfile.addEventListener("change", async () => { if (!pfile.files[0]) return; const fd = new FormData(); fd.append("file", pfile.files[0]);
-      await run(() => api("POST", `/accounts/${a.id}/photo`, fd, true), "تم رفع صورة الحساب"); m.close(); done(); });
-    form.append(h("div", { class: "card", style: "padding:12px;margin-top:12px" }, h("p", { class: "small muted", style: "margin-top:0" },
-      "صورة خاصة بهذه المزرعة تُرسل للمشتري مع بيانات الدخول" + (a.has_photo ? " — ✅ يوجد صورة" : "")),
-      h("div", { class: "btn-row" }, h("label", { class: "btn sm" }, "⬆️ رفع صورة", h("span", { style: "display:none" }, pfile)),
-        a.has_photo ? h("a", { class: "btn sm", href: `/api/accounts/${a.id}/photo`, target: "_blank" }, "عرض") : null,
-        a.has_photo ? h("button", { class: "btn sm danger", type: "button", onclick: async () => { await run(() => api("DELETE", `/accounts/${a.id}/photo`), "تم الحذف"); m.close(); done(); } }, "حذف الصورة") : null)));
-    const m = modal(`حساب #${a.id} — ${a.login_hint}`, form);
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const body = { status: st.value, custom_price: price.value.trim() || null, note: note.value };
-      if (login.value.trim()) body.login = login.value.trim();
-      if (pass.value.trim()) body.password = pass.value.trim();
-      await run(() => api("PATCH", "/accounts/" + a.id, body), "تم الحفظ");
-      m.close(); done();
-    });
-  }
-
-  function photoCard(title, hint, url, has, onUpload, onDelete) {
-    const file = h("input", { type: "file", accept: "image/*" });
-    const img = has ? h("img", { class: "proof", style: "max-height:240px;object-fit:contain", src: url + "?v=" + Date.now(), alt: title,
-      onerror: (e) => e.target.replaceWith(h("div", { class: "notice warn" }, "تعذر تحميل الصورة من تيليجرام.")) }) : h("div", { class: "empty" }, "لا توجد صورة بعد");
-    file.addEventListener("change", async () => {
-      if (!file.files[0]) return;
-      const fd = new FormData(); fd.append("file", file.files[0]);
-      await run(() => onUpload(fd), "تم رفع الصورة"); route();
-    });
-    return h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, title), h("span", { style: "flex:1" }),
-      can("catalog") ? h("label", { class: "btn sm primary" }, "⬆️ رفع صورة", h("span", { style: "display:none" }, file)) : null,
-      can("catalog") && has ? h("button", { class: "btn sm danger", onclick: async () => { await run(onDelete, "تم الحذف"); route(); } }, "حذف") : null),
-      h("div", { class: "card-b" }, h("p", { class: "small muted", style: "margin-top:0" }, hint), img));
-  }
-
-  function importCard(typeId) {
-    let mode = "text";
-    const ta = h("textarea", { dir: "ltr", placeholder: "user1:pass1\nuser2,pass2,12.5\nuser3 pass3", autocomplete: "off", spellcheck: "false" });
-    const file = h("input", { type: "file", accept: ".csv,.txt,text/csv,text/plain" });
-    const report = h("div");
-    const inputBox = h("div", null, ta);
-    const tabs = h("div", { class: "tabs" });
-    const renderTabs = () => tabs.replaceChildren(
-      h("button", { class: mode === "text" ? "on" : "", onclick: () => { mode = "text"; inputBox.replaceChildren(ta); renderTabs(); report.replaceChildren(); } }, "لصق نصي"),
-      h("button", { class: mode === "csv" ? "on" : "", onclick: () => { mode = "csv"; inputBox.replaceChildren(file, h("p", { class: "small muted" }, "الأعمدة: id, password, price (اختياري), note (اختياري). صف العناوين اختياري.")); renderTabs(); report.replaceChildren(); } }, "ملف CSV"));
-    renderTabs();
-    const send = (preview) => {
-      if (mode === "text") return POST(`/types/${typeId}/accounts`, { text: ta.value, preview });
-      if (!file.files[0]) throw new ApiError("اختر ملفاً أولاً.");
-      const fd = new FormData(); fd.append("file", file.files[0]);
-      return api("POST", `/types/${typeId}/accounts/csv?preview=${preview}`, fd, true);
-    };
-    const issues = (r) => { const all = [...(r.errors || []), ...(r.duplicates_in_file || []), ...(r.duplicates_in_db || [])]; return all.length ? h("ul", { class: "list-issues" }, all.slice(0, 300).map((x) => h("li", null, x))) : null; };
-    const check = async () => {
-      const r = await run(() => send(true));
-      report.replaceChildren(h("div", { class: "notice " + (r.valid ? "" : "warn") },
-        `✅ صالح: ${r.valid} · ❌ أخطاء: ${r.errors.length} · ♻️ مكرر بالملف: ${r.duplicates_in_file.length} · 📦 موجود مسبقاً: ${r.duplicates_in_db.length}`),
-        issues(r), r.valid ? h("div", { class: "btn-row", style: "margin-top:10px" }, h("button", { class: "btn primary", onclick: save }, `حفظ ${r.valid} حساب`)) : null);
-    };
-    const save = async () => {
-      const r = await run(() => send(false));
-      toast(`تم حفظ ${r.inserted} حساب`);
-      ta.value = ""; file.value = "";
-      report.replaceChildren(h("div", { class: "notice" }, `✅ تم حفظ ${r.inserted} حساب.`), issues(r));
-      setTimeout(() => ROUTES.type(typeId), 900);
-    };
-    return h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, "إضافة حسابات"), tabs),
-      h("div", { class: "card-b" }, h("p", { class: "small muted", style: "margin-top:0" }, "حساب في كل سطر: ID ثم كلمة المرور، وسعر خاص اختياري. يتم الفحص من التكرار والأخطاء قبل الحفظ، وتُشفّر البيانات في قاعدة البيانات."),
-        inputBox, h("div", { class: "btn-row", style: "margin-top:10px" }, h("button", { class: "btn", onclick: check }, "🔎 فحص قبل الحفظ")), report));
-  }
-
-  // ============================================================ orders
-  ROUTES.orders = async () => {
-    setTitle("طلبات الشراء");
-    let status = state.counts.review ? "needs_review" : "", page = 0;
-    const search = h("input", { type: "search", placeholder: "رقم الطلب أو Telegram ID", dir: "auto", style: "max-width:240px" });
-    const tabs = h("div", { class: "tabs" });
-    const body = h("div");
-    const renderTabs = () => tabs.replaceChildren(...[["", "الكل"], ["needs_review", "يحتاج مراجعة"], ["processing", "قيد المعالجة"], ["completed", "مكتمل"], ["cancelled", "ملغي"], ["pending", "بانتظار التأكيد"]]
-      .map(([k, l]) => h("button", { class: status === k ? "on" : "", onclick: () => { status = k; page = 0; renderTabs(); load(); } }, l)));
-    const load = async () => {
-      const items = await GET("/orders" + q({ status, search: search.value.trim(), page }));
-      body.replaceChildren(table(["الطلب", "الزبون", "النوع", "السعر", "الحالة", "الحساب", "التاريخ"], items.map((o) => h("tr", { class: "click", onclick: () => orderModal(o.id, load) },
-        h("td", { class: "mono" }, o.ref), h("td", null, h("span", { class: "num" }, o.user_id), o.username ? h("div", { class: "small muted" }, "@" + o.username) : null),
-        h("td", null, `${o.type_snapshot.name} · LVL ${o.type_snapshot.lvl}`), h("td", null, usdt(o.price)), h("td", null, pill(ORDER, o.status)),
-        h("td", { class: "mono" }, o.account_id ? `#${o.account_id} ${o.login_hint || ""}` : "—"), h("td", null, dt(o.created_at)))), "لا توجد طلبات"),
-      pager(page, items.length, 50, (p) => { page = p; load(); }));
-    };
-    search.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
-    renderTabs();
-    mainEl.replaceChildren(h("div", { class: "card" }, h("div", { class: "card-h" }, tabs, h("span", { style: "flex:1" }), search), body));
-    await load();
-  };
-  async function orderModal(id, reload) {
-    const o = await GET("/orders/" + id);
-    const acts = h("div", { class: "btn-row" });
-    const m = modal(`الطلب ${o.ref}`, h("div", { class: "stack" },
-      h("dl", { class: "kv" }, h("dt", null, "الحالة"), h("dd", null, pill(ORDER, o.status)), h("dt", null, "الزبون"), h("dd", null, h("a", { href: "#/user/" + o.user_id }, String(o.user_id)), o.username ? ` @${o.username}` : ""),
-        h("dt", null, "النوع"), h("dd", null, `${o.type_snapshot.name} — LVL ${o.type_snapshot.lvl} · Barn ${o.type_snapshot.barn} · Silo ${o.type_snapshot.silo}`),
-        h("dt", null, "السعر"), h("dd", null, usdt(o.price)), h("dt", null, "الحساب"), h("dd", { class: "mono" }, o.account_id ? `#${o.account_id} ${o.login_hint}` : "—"),
-        h("dt", null, "أُنشئ"), h("dd", null, dt(o.created_at)), h("dt", null, "سُلّم"), h("dd", null, dt(o.delivered_at)),
-        o.failure_reason ? [h("dt", null, "السبب"), h("dd", null, o.failure_reason)] : null, o.admin_note ? [h("dt", null, "ملاحظة"), h("dd", null, o.admin_note)] : null),
-      o.transactions.length ? table(["العملية", "المبلغ", "النوع", "الوقت"], o.transactions.map((t) => h("tr", null, h("td", { class: "mono" }, t.ref), h("td", { class: "num" }, money(t.amount)), h("td", null, KIND[t.kind]), h("td", null, dt(t.created_at))))) : null,
-      h("p", { class: "small muted" }, "🔒 بيانات الدخول لا تُعرض في اللوحة — تظهر للمشتري فقط."), acts), { wide: true });
-    const done = () => { m.close(); reload(); refreshCounts(); };
-    if (o.status === "needs_review") {
-      acts.append(h("button", { class: "btn primary", onclick: async () => { const r = await run(() => POST(`/orders/${id}/redeliver`)); toast(r.delivered ? "تم التسليم ✅" : "فشل الإرسال مجدداً", !r.delivered); done(); } }, "🔁 إعادة إرسال البيانات"),
-        h("button", { class: "btn", onclick: async () => { if (await confirmBox("تأكيد أن الزبون استلم البيانات بطريقة أخرى؟")) { await run(() => POST(`/orders/${id}/mark-delivered`, { note: "تأكيد يدوي من اللوحة" }), "تم"); done(); } } }, "✅ تم التسليم يدوياً"));
-    }
-    if (["needs_review", "completed", "processing"].includes(o.status) && can("wallet")) {
-      acts.append(h("button", { class: "btn danger", onclick: () => refundForm(o, done) }, "↩️ استرداد المبلغ"));
-    }
-  }
-  function refundForm(o, done) {
-    const reason = h("input", { type: "text", required: true, placeholder: "يظهر للزبون" });
-    const restock = h("input", { type: "checkbox", checked: o.status !== "completed" });
-    const form = h("form", null, h("p", null, `سيُعاد ${money(o.price)} USDT إلى محفظة الزبون مرة واحدة فقط ويُلغى الطلب.`), field("سبب الاسترداد", reason),
-      o.status !== "completed" ? h("label", { class: "switch f" }, restock, "إعادة الحساب إلى المخزون (فقط إذا تأكدت أن الزبون لم يستلم البيانات)") : null,
-      h("button", { class: "btn danger solid", type: "submit" }, "تنفيذ الاسترداد"));
-    const m = modal("استرداد " + o.ref, form);
-    form.addEventListener("submit", async (e) => { e.preventDefault(); await run(() => POST(`/orders/${o.id}/refund`, { reason: reason.value, restock: restock.checked }), "تم الاسترداد"); m.close(); done(); });
-  }
-
-  // ========================================================== deposits
-  ROUTES.deposits = async () => {
-    setTitle("طلبات شحن USDT — Binance Pay");
-    let status = "under_review", page = 0;
-    const search = h("input", { type: "search", placeholder: "المرجع / Order ID / Telegram ID", dir: "auto", style: "max-width:260px" });
-    const tabs = h("div", { class: "tabs" });
-    const body = h("div");
-    const renderTabs = () => tabs.replaceChildren(...[["under_review", "قيد المراجعة"], ["awaiting_payment", "بانتظار الدفع"], ["approved", "مقبول"], ["rejected", "مرفوض"], ["cancelled", "ملغي"], ["", "الكل"]]
-      .map(([k, l]) => h("button", { class: status === k ? "on" : "", onclick: () => { status = k; page = 0; renderTabs(); load(); } }, l)));
-    const load = async () => {
-      const items = await GET("/deposits" + q({ status, search: search.value.trim(), page }));
-      body.replaceChildren(table(["المرجع", "الزبون", "المبلغ", "Order ID", "الحالة", "التاريخ", "المراجِع"], items.map((d) => h("tr", { class: "click", onclick: () => depositModal(d, load) },
-        h("td", { class: "mono" }, d.ref), h("td", null, h("span", { class: "num" }, d.user_id), d.username ? h("div", { class: "small muted" }, "@" + d.username) : null),
-        h("td", null, usdt(d.amount), d.credited_amount && d.credited_amount !== d.amount ? h("div", { class: "small muted" }, "أُضيف " + money(d.credited_amount)) : null),
-        h("td", { class: "mono" }, d.proof_txid || "—"), h("td", null, pill(DEP, d.status), d.auto_verified ? h("span", { class: "pill info", style: "margin-inline-start:4px" }, "آلي") : null),
-        h("td", null, dt(d.created_at)), h("td", { class: "small" }, d.reviewed_by || "—"))), "لا توجد طلبات"),
-      pager(page, items.length, 50, (p) => { page = p; load(); }));
-    };
-    search.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
-    renderTabs();
-    mainEl.replaceChildren(h("div", { class: "notice warn" }, "⚠️ لا توافق على أي طلب قبل التأكد من وصول المبلغ فعلياً في سجل Binance Pay ومطابقة Order ID والمبلغ."),
-      h("div", { class: "card" }, h("div", { class: "card-h" }, tabs, h("span", { style: "flex:1" }), search), body));
-    await load();
-  };
-  function depositModal(d, reload) {
-    const amount = h("input", { type: "text", inputmode: "decimal", dir: "ltr", value: d.amount });
-    const reason = h("input", { type: "text", placeholder: "سبب الرفض — يظهر للزبون" });
-    const quick = ["لم يصل المبلغ", "المبلغ المحوّل لا يطابق الطلب", "الإثبات غير واضح أو غير صحيح", "رقم العملية غير صحيح"];
-    const acts = d.status === "under_review" || d.status === "awaiting_payment" ? h("div", { class: "stack" },
-      d.status === "under_review" ? h("div", { class: "card", style: "padding:12px" }, field("المبلغ المضاف فعلياً (USDT)", amount),
-        h("button", { class: "btn primary", onclick: async () => { if (!(await confirmBox(`تأكيد وصول ${amount.value} USDT وإضافتها لرصيد الزبون؟`))) return; await run(() => POST(`/deposits/${d.id}/approve`, { amount: amount.value }), "تم القبول وإضافة الرصيد"); m.close(); reload(); refreshCounts(); } }, "✅ قبول وإضافة الرصيد")) : null,
-      h("div", { class: "card", style: "padding:12px" }, field("سبب الرفض", reason), h("div", { class: "btn-row", style: "margin-bottom:10px" }, quick.map((x) => h("button", { class: "btn sm", onclick: () => { reason.value = x; } }, x))),
-        h("button", { class: "btn danger", onclick: async () => { await run(() => POST(`/deposits/${d.id}/reject`, { reason: reason.value }), "تم الرفض"); m.close(); reload(); refreshCounts(); } }, "❌ رفض الطلب"))) : null;
-    const m = modal(`طلب الشحن ${d.ref}`, h("div", { class: "grid two" },
-      h("div", null, d.proof_file_id ? h("img", { class: "proof", src: `/api/deposits/${d.id}/proof`, alt: "إثبات الدفع", loading: "lazy", onerror: (e) => e.target.replaceWith(h("div", { class: "notice warn" }, "تعذر تحميل صورة الإثبات من تيليجرام — راجعها من إشعار البوت.")) }) : h("div", { class: "empty" }, "لا توجد صورة")),
-      h("div", { class: "stack" }, h("dl", { class: "kv" }, h("dt", null, "الحالة"), h("dd", null, pill(DEP, d.status)), h("dt", null, "الزبون"), h("dd", null, h("a", { href: "#/user/" + d.user_id }, String(d.user_id)), d.username ? " @" + d.username : ""),
-        h("dt", null, "المبلغ المطلوب"), h("dd", null, usdt(d.amount)), h("dt", null, "Order ID"), h("dd", { class: "mono" }, d.proof_txid || "—"),
-        h("dt", null, "معرّف الدفع المعروض"), h("dd", { class: "mono" }, d.pay_id_shown || "—"), h("dt", null, "أُنشئ"), h("dd", null, dt(d.created_at)),
-        d.reviewed_by ? [h("dt", null, "روجع بواسطة"), h("dd", null, `${d.reviewed_by} — ${dt(d.reviewed_at)}`)] : null,
-        d.credited_amount ? [h("dt", null, "المبلغ المضاف"), h("dd", null, usdt(d.credited_amount))] : null,
-        d.reject_reason ? [h("dt", null, "سبب الرفض"), h("dd", null, d.reject_reason)] : null), acts)), { wide: true });
-  }
-
-  // ============================================================= users
-  ROUTES.users = async () => {
-    setTitle("المستخدمون والأرصدة");
-    let page = 0;
-    const search = h("input", { type: "search", placeholder: "Telegram User ID أو الاسم أو @username", dir: "auto" });
-    const withBal = h("input", { type: "checkbox" });
-    const body = h("div");
-    const load = async () => {
-      const items = await GET("/users" + q({ q: search.value.trim(), with_balance: withBal.checked || "", page }));
-      body.replaceChildren(table(["Telegram ID", "الاسم", "الرصيد", "المشتريات", "آخر نشاط", ""], items.map((u) => h("tr", { class: "click", onclick: () => (location.hash = "#/user/" + u.id) },
-        h("td", { class: "mono" }, u.id), h("td", null, u.first_name || "", u.username ? h("div", { class: "small muted" }, "@" + u.username) : null),
-        h("td", null, usdt(u.balance)), h("td", { class: "num" }, u.orders_count), h("td", null, dt(u.last_seen_at)), h("td", null, u.is_banned ? h("span", { class: "pill danger" }, "محظور") : ""))), "لا يوجد مستخدمون"),
-      pager(page, items.length, 50, (p) => { page = p; load(); }));
-    };
-    search.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
-    withBal.addEventListener("change", () => { page = 0; load(); });
-    mainEl.replaceChildren(h("div", { class: "card" }, h("div", { class: "card-h" }, h("div", { class: "filters", style: "flex:1" }, search, h("label", { class: "switch" }, withBal, "لديهم رصيد فقط"))), body));
-    await load();
-  };
-  ROUTES.user = async (id) => {
-    const u = await GET("/users/" + id);
-    setTitle(`المستخدم ${u.first_name || ""} (${u.id})`);
-    let tab = "tx";
-    const tabs = h("div", { class: "tabs" });
-    const tabBody = h("div");
-    const renderTab = () => {
-      tabs.replaceChildren(...[["tx", "الحركات المالية"], ["orders", "الطلبات"], ["deposits", "الشحن"]].map(([k, l]) => h("button", { class: tab === k ? "on" : "", onclick: () => { tab = k; renderTab(); } }, l)));
-      if (tab === "tx") tabBody.replaceChildren(txTable(u.transactions));
-      if (tab === "orders") tabBody.replaceChildren(table(["الطلب", "النوع", "السعر", "الحالة", "التاريخ"], u.orders.map((o) => h("tr", { class: "click", onclick: () => orderModal(o.id, () => ROUTES.user(id)) },
-        h("td", { class: "mono" }, o.ref), h("td", null, o.type_snapshot.name), h("td", null, usdt(o.price)), h("td", null, pill(ORDER, o.status)), h("td", null, dt(o.created_at))))));
-      if (tab === "deposits") tabBody.replaceChildren(table(["المرجع", "المبلغ", "Order ID", "الحالة", "التاريخ"], u.deposits.map((d) => h("tr", { class: "click", onclick: () => depositModal(d, () => ROUTES.user(id)) },
-        h("td", { class: "mono" }, d.ref), h("td", null, usdt(d.amount)), h("td", { class: "mono" }, d.proof_txid || "—"), h("td", null, pill(DEP, d.status)), h("td", null, dt(d.created_at))))));
-    };
-    renderTab();
-    const amount = h("input", { type: "text", inputmode: "decimal", dir: "ltr", placeholder: "مثال: 10 أو -5" });
-    const reason = h("input", { type: "text", placeholder: "سبب واضح (إلزامي)" });
-    let key = uid();
-    const adjust = can("wallet") ? h("div", { class: "card" }, h("div", { class: "card-h" }, h("h3", null, "تعديل الرصيد يدوياً")), h("div", { class: "card-b" },
-      h("div", { class: "form-grid" }, field("المبلغ (موجب = إضافة، سالب = خصم)", amount), field("السبب", reason)),
-      h("button", { class: "btn primary", onclick: async () => {
-        if (!(await confirmBox(`تنفيذ ${amount.value} USDT على رصيد ${u.id}؟`))) return;
-        await run(() => POST(`/users/${id}/adjust`, { amount: amount.value, reason: reason.value, idempotency_key: key }), "تمت العملية");
-        key = uid(); ROUTES.user(id);
-      } }, "تنفيذ"), h("p", { class: "small muted" }, "كل تعديل يُسجل كحركة مالية برقم فريد مع اسمك والسبب، ولا يمكن أن يصبح الرصيد سالباً."))) : null;
-    mainEl.replaceChildren(
-      h("div", { class: "btn-row" }, h("a", { class: "btn sm", href: "#/users" }, "→ المستخدمون"),
-        can("users") ? h("button", { class: "btn sm " + (u.is_banned ? "" : "danger"), onclick: async () => { await run(() => POST(`/users/${id}/ban`, { banned: !u.is_banned }), "تم"); route(); } }, u.is_banned ? "✅ فك الحظر" : "⛔️ حظر المستخدم") : null),
-      h("div", { class: "grid kpis" }, kpi("الرصيد", money(u.balance), "USDT"), kpi("Telegram ID", u.id), kpi("اسم المستخدم", u.username ? "@" + u.username : "—"),
-        kpi("انضم", dt(u.created_at).split(",")[0]), kpi("الحالة", u.is_banned ? "محظور" : "نشط", "", u.is_banned ? "danger" : "")),
-      adjust, h("div", { class: "card" }, h("div", { class: "card-h" }, tabs), tabBody));
-  };
-  const txTable = (txs) => table(["العملية", "النوع", "المبلغ", "الرصيد بعدها", "بواسطة", "السبب", "الوقت"], txs.map((t) => h("tr", null,
-    h("td", { class: "mono" }, t.ref), h("td", null, KIND[t.kind] || t.kind), h("td", null, h("b", { class: "num", style: `color:var(--${+t.amount > 0 ? "ok" : "danger"})` }, (+t.amount > 0 ? "+" : "") + money(t.amount))),
-    h("td", null, usdt(t.balance_after)), h("td", { class: "small" }, t.actor || "—"), h("td", { class: "wrap small" }, t.reason || "—"), h("td", null, dt(t.created_at)))), "لا توجد حركات");
-
-  ROUTES.transactions = async () => {
-    setTitle("الحركات المالية");
-    let page = 0;
-    const kind = h("select", null, h("option", { value: "" }, "كل الأنواع"), Object.entries(KIND).map(([k, l]) => h("option", { value: k }, l)));
-    const user = h("input", { type: "search", placeholder: "Telegram ID", dir: "ltr", inputmode: "numeric" });
-    const body = h("div");
-    const recon = h("div");
-    const load = async () => {
-      const items = await GET("/transactions" + q({ kind: kind.value, user_id: user.value.trim(), page }));
-      body.replaceChildren(table(["العملية", "المستخدم", "النوع", "المبلغ", "الرصيد بعدها", "بواسطة", "السبب", "الوقت"], items.map((t) => h("tr", null,
-        h("td", { class: "mono" }, t.ref), h("td", null, h("a", { href: "#/user/" + t.user_id, class: "num" }, String(t.user_id))), h("td", null, KIND[t.kind]),
-        h("td", null, h("b", { class: "num", style: `color:var(--${+t.amount > 0 ? "ok" : "danger"})` }, (+t.amount > 0 ? "+" : "") + money(t.amount))),
-        h("td", null, usdt(t.balance_after)), h("td", { class: "small" }, t.actor || "—"), h("td", { class: "wrap small" }, t.reason || "—"), h("td", null, dt(t.created_at)))), "لا توجد حركات"),
-      pager(page, items.length, 50, (p) => { page = p; load(); }));
-    };
-    kind.addEventListener("change", () => { page = 0; load(); });
-    user.addEventListener("input", debounce(() => { page = 0; load(); }, 400));
-    mainEl.replaceChildren(recon, h("div", { class: "card" }, h("div", { class: "card-h" }, h("div", { class: "filters", style: "flex:1" }, kind, user),
-      can("wallet") ? h("button", { class: "btn sm", onclick: async () => { const r = await run(() => GET("/wallet/reconcile")); recon.replaceChildren(h("div", { class: "notice " + (r.length ? "danger" : "") }, r.length ? `⚠️ ${r.length} رصيد لا يطابق السجل!` : "✅ جميع الأرصدة تطابق السجل المالي تماماً.")); } }, "🧮 مطابقة الأرصدة") : null), body));
-    await load();
-  };
-
-  // ========================================================== settings
-  ROUTES.settings = async () => {
-    setTitle("الإعدادات ورسائل البوت");
-    const items = await GET("/settings");
-    const inputs = {};
-    const groups = { "الدفع عبر Binance Pay": ["binance_pay_id", "payment_instructions", "min_deposit", "max_deposit", "require_txid", "auto_verify_enabled"],
-      "رسائل البوت والدعم": ["store_name", "welcome_text", "support_text", "support_username"],
-      "النصوص باللغة الإنجليزية": ["welcome_text_en", "support_text_en", "payment_instructions_en"],
-      "المخزون والشراء": ["hide_out_of_stock", "low_stock_threshold", "max_quantity"],
-      "أيقونات أزرار القائمة (Custom Emoji ID)": ["icon_buy", "icon_wallet", "icon_topup", "icon_orders", "icon_support", "icon_lang"] };
-    const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
-    const cards = Object.entries(groups).map(([title, keys]) => h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", null, title)), h("div", { class: "card-b" },
-      keys.filter((k) => byKey[k]).map((k) => {
-        const s = byKey[k];
-        let el;
-        if (s.kind === "bool") { el = h("input", { type: "checkbox", checked: s.value === "true" }); inputs[k] = el; return h("label", { class: "switch f" }, el, s.label); }
-        if (s.kind === "longtext") { el = h("textarea", { dir: k.endsWith("_en") ? "ltr" : "auto" }); el.value = s.value; } else el = h("input", { type: "text", value: s.value, dir: ["binance_pay_id", "support_username", "min_deposit", "max_deposit", "low_stock_threshold", "max_quantity"].includes(k) || s.kind === "icon" ? "ltr" : "auto", placeholder: s.kind === "icon" ? "مثال: 5368324170671202286 — أو استخدم 🛠 ← ⚙️ ← 🎨 في البوت" : "" });
-        inputs[k] = el;
-        return field(s.label, el);
-      }))));
-    const save = h("button", { class: "btn primary", onclick: async () => {
-      const body = {};
-      for (const [k, el] of Object.entries(inputs)) body[k] = el.type === "checkbox" ? el.checked : el.value;
-      await run(() => api("PUT", "/settings", body), "تم حفظ الإعدادات — تُطبق فوراً في البوت");
-    } }, "💾 حفظ كل الإعدادات");
-    mainEl.replaceChildren(h("div", { class: "notice" }, "التحقق الآلي يتطلب ضبط BINANCE_API_KEY و BINANCE_API_SECRET (مفتاح قراءة فقط) في متغيرات البيئة. بدونها تبقى المراجعة يدوية."),
-      ...cards, h("div", { class: "btn-row" }, save));
   };
 
   // ============================================================ admins

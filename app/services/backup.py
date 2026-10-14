@@ -19,7 +19,7 @@ async def make_backup(core: Core) -> Path:
         raise StoreError("no_pg_dump", "أداة pg_dump غير مثبتة على الخادم.")
     folder = Path(core.config.backup_dir)
     folder.mkdir(parents=True, exist_ok=True)
-    name = f"hayday-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.dump"
+    name = f"hdfarm-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.dump"
     path = folder / name
     dsn = core.config.database_url
     if dsn.startswith("postgres://"):
@@ -31,7 +31,7 @@ async def make_backup(core: Core) -> Path:
     if proc.returncode != 0:
         path.unlink(missing_ok=True)
         raise StoreError("backup_failed", f"فشل النسخ الاحتياطي: {err.decode(errors='ignore')[:300]}")
-    old = sorted(folder.glob("hayday-*.dump"))[:-KEEP]
+    old = sorted(folder.glob("hdfarm-*.dump"))[:-KEEP]
     for f in old:
         f.unlink(missing_ok=True)
     log.info("backup created %s (%d bytes)", path, os.path.getsize(path))
@@ -44,11 +44,11 @@ def list_backups(core: Core) -> list[dict]:
         return []
     return [{"name": f.name, "size": f.stat().st_size,
              "created_at": datetime.fromtimestamp(f.stat().st_mtime, timezone.utc).isoformat()}
-            for f in sorted(folder.glob("hayday-*.dump"), reverse=True)]
+            for f in sorted(folder.glob("hdfarm-*.dump"), reverse=True)]
 
 
 def backup_path(core: Core, name: str) -> Path:
-    if "/" in name or "\\" in name or not name.startswith("hayday-") or not name.endswith(".dump"):
+    if "/" in name or "\\" in name or not name.startswith("hdfarm-") or not name.endswith(".dump"):
         raise StoreError("bad_input", "اسم ملف غير صالح.")
     p = Path(core.config.backup_dir) / name
     if not p.exists():

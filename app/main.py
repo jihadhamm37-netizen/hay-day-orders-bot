@@ -18,9 +18,9 @@ from .api.server import create_app
 from .bot.setup import attach_messenger, create_bot, create_dispatcher, set_commands
 from .config import Config
 from .core import Core, StoreError
-from .db import create_pool, migrate
+from .db import create_pool, migrate, reset_old_schema
 from .security import Vault
-from .services import admins, backup, deposits, orders, system
+from .services import admins, backup, orders, system
 
 log = logging.getLogger("app")
 
@@ -50,7 +50,6 @@ async def jobs(core: Core, bot) -> None:
     while True:
         try:
             await orders.maintenance(core)
-            await deposits.maintenance(core)
             await core.pool.execute("DELETE FROM login_codes WHERE expires_at < now() - interval '1 day'")
             due = core.config.backup_every_hours > 0 and (
                 last_backup is None or
@@ -71,7 +70,7 @@ async def jobs(core: Core, bot) -> None:
                                              perm="backup")
         except Exception:
             log.exception("maintenance job failed")
-        await asyncio.sleep(60)
+        await asyncio.sleep(30)
 
 
 async def run() -> None:
@@ -79,6 +78,8 @@ async def run() -> None:
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = Config.from_env()
     pool = await create_pool(cfg.database_url)
+    if cfg.reset_db and await reset_old_schema(pool):
+        log.warning("old store wiped (RESET_DB). Remove RESET_DB from the environment.")
     applied = await migrate(pool)
     if applied:
         log.info("migrations applied: %s", applied)

@@ -24,6 +24,20 @@ async def create_pool(dsn: str, min_size: int = 1, max_size: int = 10) -> asyncp
                                      command_timeout=60)
 
 
+async def reset_old_schema(pool: asyncpg.Pool) -> bool:
+    """One-time wipe of the previous (menu-based) store when RESET_DB=true.
+
+    Only runs if the old schema is detected (wallet_transactions table), so leaving RESET_DB on is harmless.
+    """
+    async with pool.acquire() as conn:
+        old = await conn.fetchval("SELECT to_regclass('public.wallet_transactions') IS NOT NULL")
+        if not old:
+            return False
+        await conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+        log.warning("RESET_DB: previous store schema and all its data were dropped")
+        return True
+
+
 async def migrate(pool: asyncpg.Pool) -> list[str]:
     """Apply every migrations/*.sql file not yet applied, in order, each in a transaction."""
     applied: list[str] = []

@@ -97,3 +97,6 @@ class Client:
 
     async def put(self, url, json=None):
         return await self.request("PUT", url, json_body=json, headers=self.csrf())
+
+    async def delete(self, url):
+        return await self.request("DELETE", url, headers=self.csrf())

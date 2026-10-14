@@ -1,6 +1,6 @@
 """Test fixtures — every test runs against a freshly migrated real PostgreSQL database.
 
-Set TEST_DATABASE_URL, e.g. postgresql://postgres:postgres@localhost:5432/hayday_test
+Set TEST_DATABASE_URL, e.g. postgresql://postgres:postgres@localhost:5432/hdfarm_test
 (the database's public schema is wiped before each test).
 """
 from __future__ import annotations
@@ -20,26 +20,36 @@ KEY = generate_fernet_key()
 
 class FakeMessenger:
     def __init__(self):
-        self.credentials: list[tuple[int, str, str]] = []
-        self.user_msgs: list[tuple[int, str]] = []
+        self.delivered: list[tuple[int, str, str]] = []
+        self.summaries: list[dict] = []
+        self.method_lists: list[tuple[dict, list]] = []
+        self.customer_msgs: list[tuple[int, str, dict]] = []
+        self.texts: list[tuple[int, str]] = []
         self.admin_msgs: list[str] = []
         self.codes: list[tuple[int, str]] = []
         self.fail_delivery = False
 
-    async def send_credentials(self, user_id, order, login, password):
+    async def send_order_summary(self, order):
+        self.summaries.append(order)
+
+    async def send_payment_methods(self, order, methods):
+        self.method_lists.append((order, methods))
+
+    async def send_payment_details(self, order, method):
+        pass
+
+    async def deliver_farms(self, order, items):
         if self.fail_delivery:
             raise RuntimeError("Forbidden: bot was blocked by the user")
-        self.credentials.append((user_id, login, password))
+        for _, tok, pw in items:
+            self.delivered.append((order["customer_id"], tok, pw))
 
-    async def send_credentials_batch(self, user_id, items):
-        if self.fail_delivery:
-            raise RuntimeError("Forbidden: bot was blocked by the user")
-        for _, login, password in items:
-            self.credentials.append((user_id, login, password))
+    async def notify_customer(self, customer_id, key, **params):
+        self.customer_msgs.append((customer_id, key, params))
+        return True
 
-    async def notify_user(self, user_id, text=None, *, key=None, **params):
-        from app.i18n import render
-        self.user_msgs.append((user_id, text if key is None else render("ar", key, params)))
+    async def send_text(self, customer_id, text):
+        self.texts.append((customer_id, text))
         return True
 
     async def notify_admins(self, text, *, perm="view", photo=None, reply_markup=None):
@@ -57,25 +67,48 @@ async def core():
     pool = await create_pool(DSN, max_size=40)
     await pool.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
     await migrate(pool)
-    cfg = Config(bot_token="123:TEST", database_url=DSN, encryption_key=KEY, jwt_secret="test-secret-for-jwt-signing-0123456789abcdef",
-                 owner_ids={999}, cookie_secure=False, backup_dir="/tmp/hd-test-backups")
+    cfg = Config(bot_token="123:TEST", database_url=DSN, encryption_key=KEY,
+                 jwt_secret="test-secret-for-jwt-signing-0123456789abcdef", owner_ids={999}, cookie_secure=False,
+                 backup_dir="/tmp/hd-test-backups", anthropic_api_key="test-key")
     c = Core(pool, Vault(KEY), cfg, FakeMessenger())
     yield c
     await pool.close()
 
 
-async def make_user(core: Core, uid: int, balance: str = "0") -> None:
-    from app.services import wallet
-    await wallet.touch_user(core, uid, f"user{uid}", f"User {uid}")
-    await core.pool.execute("UPDATE users SET lang_chosen=TRUE WHERE id=$1", uid)
-    if balance != "0":
-        await wallet.admin_adjust(core, "test", uid, balance, "رصيد اختبار")
+async def make_customer(core: Core, cid: int, lang: str = "ar") -> dict:
+    from app.services import customers
+    return await customers.touch(core, cid, f"user{cid}", f"User {cid}", lang)
 
 
-async def make_type(core: Core, n_accounts: int = 5, price: str = "10", lvl: int = 70) -> dict:
-    from app.services import catalog
-    t = await catalog.create_type(core, "test", {"lvl": lvl, "barn": 4000, "silo": 3000, "price": price})
-    items = [{"line": i + 1, "login": f"farm{lvl}_{i}", "password": f"pw{i}"} for i in range(n_accounts)]
-    rep = await catalog.add_accounts(core, "test", t["id"], items)
-    assert rep["inserted"] == n_accounts
-    return t
+async def add_farms(core: Core, n: int = 5, *, lvl: int = 100, price: str = "30", cost: str | None = "20",
+                    prefix: str = "TOK") -> list[dict]:
+    from app.services import farms
+    out = []
+    for i in range(n):
+        out.append(await farms.create_farm(core, "test", {"lvl": lvl, "barn": 10000, "silo": 3000, "tools": 10000,
+                                                         "price": price, "cost": cost, "token_id": f"{prefix}{lvl}-{i}",
+                                                         "password": f"pw{i}"}))
+    return out
+
+
+async def offer_code(core: Core, lvl: int = 100) -> str:
+    from app.services import farms
+    offers = await farms.search_offers(core, min_level=lvl, max_level=lvl)
+    return offers[0]["offer_code"]
+
+
+async def method_id(core: Core) -> int:
+    return await core.pool.fetchval("SELECT id FROM payment_methods ORDER BY id LIMIT 1")
+
+
+async def paid_flow(core: Core, cid: int, qty: int = 1, lvl: int = 100, proof: str = "proof1", txid: str = "TX123456"):
+    """Customer: prepare → confirm → choose method → screenshot → txid. Returns (order, payment)."""
+    from app.services import orders, payments
+    o = await orders.prepare(core, cid, await offer_code(core, lvl), qty)
+    o = await orders.confirm(core, cid, o["id"])
+    await payments.choose_method(core, cid, o["id"], await method_id(core))
+    r = await payments.submit_proof(core, cid, "file-" + proof, proof)
+    p = r["payment"]
+    if r["need_txid"]:
+        p = await payments.submit_txid(core, cid, p["id"], txid)
+    return o, p

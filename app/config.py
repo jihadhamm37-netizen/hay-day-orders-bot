@@ -35,8 +35,9 @@ class Config:
     cookie_secure: bool = True
     session_hours: int = 12
     require_tg_code: bool = True      # web login: 2nd factor sent through the bot
-    binance_api_key: str = ""
-    binance_api_secret: str = ""
+    anthropic_api_key: str = ""
+    ai_model: str = "claude-haiku-5-5"
+    reset_db: bool = False
     backup_dir: str = "/tmp/backups"
     backup_every_hours: int = 24
     backup_to_telegram: bool = True
@@ -69,8 +70,9 @@ class Config:
             cookie_secure=_bool(os.environ.get("COOKIE_SECURE"), True),
             session_hours=int(os.environ.get("SESSION_HOURS", "12")),
             require_tg_code=_bool(os.environ.get("REQUIRE_TELEGRAM_CODE"), True),
-            binance_api_key=os.environ.get("BINANCE_API_KEY", ""),
-            binance_api_secret=os.environ.get("BINANCE_API_SECRET", ""),
+            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "").strip(),
+            ai_model=os.environ.get("AI_MODEL", "claude-haiku-5-5").strip() or "claude-haiku-5-5",
+            reset_db=_bool(os.environ.get("RESET_DB"), False),
             backup_dir=os.environ.get("BACKUP_DIR", "/tmp/backups"),
             backup_every_hours=int(os.environ.get("BACKUP_EVERY_HOURS", "24")),
             backup_to_telegram=_bool(os.environ.get("BACKUP_TO_TELEGRAM"), True),

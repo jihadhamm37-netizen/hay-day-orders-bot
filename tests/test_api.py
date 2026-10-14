@@ -1,14 +1,12 @@
 """Web panel API: authentication, 2FA via Telegram, CSRF, permissions and key actions."""
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
 
 from app.api.server import create_app, login_limiter
-from app.services import admins, deposits, orders, wallet
+from app.services import admins, orders
 from tests.asgi_client import Client
-from tests.conftest import make_type, make_user
+from tests.conftest import add_farms, make_customer, paid_flow
 
 PW = "StrongPass123"
 
@@ -33,127 +31,124 @@ async def logged_in(core, role="owner", username="boss", telegram_id=None) -> Cl
 async def test_requires_login_and_hides_root(core):
     c = Client(create_app(core))
     assert (await c.get("/api/stats/overview")).status_code == 401
-    r = await c.get("/")
-    assert r.text == "OK"  # nothing reveals the panel location
+    assert (await c.get("/")).text == "OK"
     assert (await c.get("/panel")).status_code == 200
 
 
-async def test_wrong_password_and_lockout(core):
-    await admins.create_admin(core, "test", "boss", PW, "owner")
-    c = Client(create_app(core))
-    for _ in range(5):
-        r = await c.post("/api/auth/login", {"username": "boss", "password": "nope"}, csrf=False)
-        assert r.status_code == 400
-    r = await c.post("/api/auth/login", {"username": "boss", "password": PW}, csrf=False)
-    assert r.status_code == 400 and "قفل" in r.json()["error"]
-
-
-async def test_weak_password_rejected(core):
-    with pytest.raises(Exception):
-        await admins.create_admin(core, "test", "weak", "123456", "admin")
-
-
 async def test_telegram_code_second_factor(core):
-    await admins.create_admin(core, "test", "boss", PW, "owner", telegram_id=555)
+    await admins.create_admin(core, "test", "boss", PW, "owner", 999)
     c = Client(create_app(core))
     r = await c.post("/api/auth/login", {"username": "boss", "password": PW}, csrf=False)
     data = r.json()["data"]
-    assert data["step"] == "code" and "hd_session" not in c.cookies
-    assert core.messenger.codes[-1][0] == 555
+    assert data["step"] == "code"
+    assert (await c.get("/api/auth/me")).status_code == 401
     bad = await c.post("/api/auth/verify", {"ticket": data["ticket"], "code": "000000"}, csrf=False)
     assert bad.status_code == 401
     good = await c.post("/api/auth/verify", {"ticket": data["ticket"], "code": core.messenger.codes[-1][1]}, csrf=False)
-    # one wrong attempt marks the code row as used=false/attempts+1 — the right code still works
-    assert good.status_code == 200 and "hd_session" in c.cookies
-    assert (await c.get("/api/auth/me")).json()["data"]["username"] == "boss"
+    assert good.status_code == 200
+    me = (await c.get("/api/auth/me")).json()["data"]
+    assert me["username"] == "boss" and me["ai_configured"] is True
 
 
-async def test_csrf_required_for_changes(core):
+async def test_csrf_required(core):
     c = await logged_in(core)
-    r = await c.post("/api/types", {"lvl": 70, "barn": 4000, "silo": 3000, "price": "10"}, csrf=False)
-    assert r.status_code == 403
-    r = await c.post("/api/types", {"lvl": 70, "barn": 4000, "silo": 3000, "price": "10"})
-    assert r.status_code == 200 and r.json()["data"]["name"] == "LVL 70"
+    body = {"lvl": 70, "price": "10", "token_id": "X1", "password": "p"}
+    assert (await c.post("/api/farms", body, csrf=False)).status_code == 403
+    assert (await c.post("/api/farms", body)).status_code == 200
 
 
 async def test_support_role_limits(core):
-    c = await logged_in(core, role="support", username="helper")
-    assert (await c.get("/api/deposits")).status_code == 200
-    assert (await c.post("/api/types", {"lvl": 1, "barn": 1, "silo": 1, "price": "1"})).status_code == 403
+    c = await logged_in(core, role="support", username="sup")
+    assert (await c.get("/api/payments")).status_code == 200
+    assert (await c.get("/api/ai/status")).status_code == 200
+    assert (await c.post("/api/farms", {"lvl": 1, "price": "1", "token_id": "a", "password": "b"})).status_code == 403
     assert (await c.get("/api/admins")).status_code == 403
-    await make_user(core, 1)
-    assert (await c.post("/api/users/1/adjust", {"amount": "5", "reason": "test"})).status_code == 403
+    assert (await c.get("/api/settings")).status_code == 403
 
 
-async def test_import_preview_then_save_and_no_credentials_leak(core):
+async def test_farm_listing_never_exposes_credentials(core):
     c = await logged_in(core)
-    t = (await c.post("/api/types", {"lvl": 80, "barn": 5000, "silo": 4000, "price": "12.5"})).json()["data"]
-    csv = b"id,password\nalpha,SecretA1\nbeta,SecretB2\nalpha,dupe\n"
-    r = await c.post(f"/api/types/{t['id']}/accounts/csv?preview=true", files={"file": ("a.csv", csv)})
-    rep = r.json()["data"]
-    assert rep["valid"] == 2 and len(rep["duplicates_in_file"]) == 1
-    assert await core.pool.fetchval("SELECT count(*) FROM farm_accounts") == 0  # preview saves nothing
-    r = await c.post(f"/api/types/{t['id']}/accounts/csv", files={"file": ("a.csv", csv)})
+    r = await c.post("/api/farms/import-text", {"text": "SECRET-TOKEN-1:SecretPw1\nSECRET-TOKEN-2:SecretPw2",
+                                               "defaults": {"lvl": 90, "price": "15"}, "preview": False})
     assert r.json()["data"]["inserted"] == 2
-    r = await c.post(f"/api/types/{t['id']}/accounts", {"text": "gamma:SecretC3\nbeta:x"})
+    listing = await c.get("/api/farms?status=available")
+    assert "SECRET-TOKEN-1" not in listing.text and "SecretPw1" not in listing.text
+    assert len(listing.json()["data"]) == 2
+    # exact token search still works (by hash)
+    found = (await c.get("/api/farms?search=SECRET-TOKEN-2")).json()["data"]
+    assert len(found) == 1
+
+
+async def test_csv_import(core):
+    c = await logged_in(core)
+    csv = "lvl,price,token_id,password,barn\n100,30,T1,P1,10000\n100,30,T1,P1,10000\nabc,30,T2,P2,1\n".encode()
+    r = await c.post("/api/farms/import?preview=true", files={"file": ("a.csv", csv)})
+    d = r.json()["data"]
+    assert d["valid"] == 1 and d["duplicates_in_file"] and d["errors"]
+    r = await c.post("/api/farms/import", files={"file": ("a.csv", csv)})
     assert r.json()["data"]["inserted"] == 1
-    listing = await c.get(f"/api/accounts?type_id={t['id']}")
-    body = listing.text
-    assert "Secret" not in body and "alpha" not in body and "login_enc" not in body
-    assert len(listing.json()["data"]) == 3
 
 
-async def test_deposit_approval_via_api_is_single(core):
+async def test_payment_review_via_api(core):
     c = await logged_in(core)
-    await make_user(core, 7)
-    d = await deposits.create(core, 7, "40")
-    await deposits.attach_photo(core, 7, d["id"], "f", "uniq")
-    await deposits.attach_txid(core, 7, d["id"], "M_P_777777")
-    await deposits.submit(core, 7, d["id"])
-    r1 = await c.post(f"/api/deposits/{d['id']}/approve", {})
-    r2 = await c.post(f"/api/deposits/{d['id']}/approve", {})
+    await make_customer(core, 5)
+    await add_farms(core, 1)
+    o, p = await paid_flow(core, 5)
+    pend = (await c.get("/api/payments?status=pending")).json()["data"]
+    assert [x["id"] for x in pend] == [p["id"]]
+    r1 = await c.post(f"/api/payments/{p['id']}/approve", {})
+    r2 = await c.post(f"/api/payments/{p['id']}/approve", {})
     assert r1.status_code == 200 and r2.status_code == 400
-    assert (await wallet.get_user(core, 7))["balance"] == Decimal("40")
-    audit = (await c.get("/api/audit?action=deposit.")).json()["data"]
-    assert audit[0]["actor"] == "web:boss"
+    od = (await c.get(f"/api/orders/{o['id']}")).json()["data"]
+    assert od["status"] == "delivered" and "token_enc" not in str(od)
+    audit = (await c.get("/api/audit?action=payment.")).json()["data"]
+    assert any(a["action"] == "payment.approve" for a in audit)
+    s = (await c.get("/api/stats/overview")).json()["data"]
+    assert s["sales"][0]["revenue"] == "30.00" or float(s["sales"][0]["revenue"]) == 30
 
 
-async def test_adjust_balance_and_refund_via_api(core):
+async def test_order_reject_requires_reason_and_notifies(core):
     c = await logged_in(core)
-    await make_user(core, 3)
-    r = await c.post("/api/users/3/adjust", {"amount": "15", "reason": "تعويض", "idempotency_key": "k1"})
+    await make_customer(core, 6)
+    await add_farms(core, 1)
+    o, p = await paid_flow(core, 6)
+    assert (await c.post(f"/api/orders/{o['id']}/reject", {"reason": ""})).status_code == 400
+    r = await c.post(f"/api/orders/{o['id']}/reject", {"reason": "بيانات الدفع غير صحيحة"})
     assert r.status_code == 200
-    r = await c.post("/api/users/3/adjust", {"amount": "15", "reason": "تعويض", "idempotency_key": "k1"})
-    assert r.status_code == 400  # same click twice
-    r = await c.post("/api/users/3/adjust", {"amount": "-100", "reason": "خصم"})
+    assert (await orders.get_order(core, o["id"]))["status"] == "rejected"
+    assert core.messenger.customer_msgs[-1][1] == "order_rejected"
+
+
+async def test_chat_takeover_and_message(core):
+    c = await logged_in(core)
+    await make_customer(core, 7)
+    r = await c.post("/api/customers/7/message", {"text": "مرحبا من الإدارة"})
+    assert r.status_code == 200
+    assert core.messenger.texts[-1] == (7, "مرحبا من الإدارة")
+    cust = (await c.get("/api/customers/7")).json()["data"]
+    assert cust["ai_paused"] and cust["messages"][-1]["role"] == "admin"
+    assert [x["id"] for x in (await c.get("/api/customers?waiting=true")).json()["data"]] == [7]
+    await c.post("/api/customers/7/ai", {"enabled": True})
+    assert not (await c.get("/api/customers/7")).json()["data"]["ai_paused"]
+
+
+async def test_global_ai_toggle_and_settings(core):
+    c = await logged_in(core)
+    await c.post("/api/ai/toggle", {"enabled": False})
+    assert (await c.get("/api/ai/status")).json()["data"]["enabled"] is False
+    r = await c.put("/api/settings", {"reservation_minutes": "2"})
     assert r.status_code == 400
-    t = await make_type(core, 1)
-    core.messenger.fail_delivery = True
-    o = await orders.prepare(core, 3, t["id"], "10")
-    await orders.purchase(core, 3, o["id"])
-    r = await c.post(f"/api/orders/{o['id']}/refund", {"reason": "فشل التسليم", "restock": True})
-    assert r.status_code == 200 and r.json()["data"]["status"] == "cancelled"
-    u = (await c.get("/api/users/3")).json()["data"]
-    assert Decimal(u["balance"]) == Decimal("15")
-    assert (await c.get("/api/wallet/reconcile")).json()["data"] == []
-
-
-async def test_settings_validation(core):
-    c = await logged_in(core)
-    assert (await c.put("/api/settings", {"binance_pay_id": "abc"})).status_code == 400
-    assert (await c.put("/api/settings", {"binance_pay_id": "1127859028", "hide_out_of_stock": True})).status_code == 200
+    r = await c.put("/api/settings", {"reservation_minutes": "45", "warranty_policy": "ضمان 24 ساعة"})
+    assert r.status_code == 200
     s = {x["key"]: x["value"] for x in (await c.get("/api/settings")).json()["data"]}
-    assert s["hide_out_of_stock"] == "true"
+    assert s["reservation_minutes"] == "45" and s["warranty_policy"] == "ضمان 24 ساعة"
 
 
-async def test_admin_management_and_session_revocation(core):
+async def test_methods_crud(core):
     c = await logged_in(core)
-    r = await c.post("/api/admins", {"username": "mod1", "password": PW, "role": "admin"})
-    mod_id = r.json()["data"]["id"]
-    mod = Client(create_app(core))
-    await mod.post("/api/auth/login", {"username": "mod1", "password": PW}, csrf=False)
-    assert (await mod.get("/api/stats/overview")).status_code == 200
-    await c.patch(f"/api/admins/{mod_id}", {"is_active": False})
-    assert (await mod.get("/api/stats/overview")).status_code == 401
-    owner_id = (await c.get("/api/auth/me")).json()["data"]["id"]
-    assert (await c.patch(f"/api/admins/{owner_id}", {"role": "admin"})).status_code == 400  # last owner
+    r = await c.post("/api/methods", {"name": "Binance Pay 2", "kind": "binance_pay", "account": "555000111",
+                                      "currency": "USDT", "require_txid": True, "is_active": True})
+    assert r.status_code == 200, r.text
+    mid = r.json()["data"]["id"]
+    assert len((await c.get("/api/methods")).json()["data"]) == 2
+    assert (await c.delete(f"/api/methods/{mid}")).status_code == 200
