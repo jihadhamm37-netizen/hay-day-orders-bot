@@ -57,7 +57,8 @@ async def adjust(core: Core, actor: str, code_or_id, amount, note: str | None = 
 
 
 async def pay_order(core: Core, customer_id: int, order_id: int) -> dict:
-    """Pay an order that awaits payment from the customer's balance: deduct once, order goes to 'processing'."""
+    """Buy with balance, no staff approval: the balance must cover the whole order; it is deducted once and the
+    farms reserved for this order are delivered right away. If delivery fails the order waits for staff."""
     async with core.pool.acquire() as conn, conn.transaction():
         o = await conn.fetchrow("SELECT * FROM orders WHERE id=$1 AND customer_id=$2 FOR UPDATE", order_id, customer_id)
         if not o:
@@ -68,7 +69,9 @@ async def pay_order(core: Core, customer_id: int, order_id: int) -> dict:
             raise StoreError("currency", f"لا يمكن دفع طلب بعملة {o['currency']} من الرصيد.")
         c = await conn.fetchrow("SELECT balance FROM customers WHERE id=$1 FOR UPDATE", customer_id)
         if c["balance"] < o["total"]:
-            raise StoreError("insufficient", f"رصيدك {fmt(c['balance'])} $ لا يكفي لهذا الطلب ({fmt(o['total'])} $).")
+            raise StoreError("insufficient",
+                             f"رصيدك ${fmt(c['balance'])} لا يكفي لهذا الطلب (${fmt(o['total'])}). ينقصك "
+                             f"${fmt(o['total'] - c['balance'])} — اشحن رصيدك عبر الإدارة أو اختر وسيلة دفع أخرى.")
         new = c["balance"] - o["total"]
         await conn.execute("UPDATE customers SET balance=$2 WHERE id=$1", customer_id, new)
         await conn.execute(
@@ -79,13 +82,21 @@ async def pay_order(core: Core, customer_id: int, order_id: int) -> dict:
             "WHERE id=$1 RETURNING *", order_id)
         await audit(conn, f"customer:{customer_id}", "order.paid_from_balance", "order", order_id,
                     {"ref": o["ref"], "amount": o["total"], "balance": new})
+    from . import orders as orders_svc          # local import: orders imports this module
     if core.messenger:
         await core.messenger.notify_customer(customer_id, "paid_from_balance", ref=o["ref"], amount=fmt(o["total"]),
                                              balance=fmt(new))
-        await core.messenger.notify_admins(
-            f"دفع من الرصيد — الطلب {o['ref']} ({fmt(o['total'])} $) قيد التجهيز. جهّز الحسابات ثم اضغط «تسليم الطلب».",
-            perm="orders")
-    return dict(o)
+    delivered = await orders_svc.deliver(core, o["id"], f"balance:{customer_id}")
+    if core.messenger:
+        if delivered:
+            await core.messenger.notify_admins(
+                f"شراء من الرصيد — الطلب {o['ref']} (${fmt(o['total'])}) دُفع من رصيد العميل وسُلّم تلقائيًا.", perm="orders")
+        else:
+            await core.messenger.notify_customer(customer_id, "payment_confirmed", ref=o["ref"])
+            await core.messenger.notify_admins(
+                f"شراء من الرصيد — الطلب {o['ref']} (${fmt(o['total'])}) مدفوع لكن التسليم التلقائي تعذّر. "
+                "افتح الطلب واضغط «تسليم الطلب».", perm="orders")
+    return dict(await core.pool.fetchrow("SELECT * FROM orders WHERE id=$1", order_id))
 
 
 async def refund_in_tx(conn, o: dict, actor: str) -> Decimal | None:

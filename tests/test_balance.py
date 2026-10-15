@@ -49,7 +49,7 @@ async def test_topup_by_code_and_deduct(env):
     assert [x["kind"] for x in await balance.history(env, c["id"])] == ["deduct", "topup"]
 
 
-async def test_pay_order_from_balance_then_refund_on_cancel(env):
+async def test_balance_purchase_is_delivered_without_staff(env):
     c = (await customers.create_codes(env, "t", 1, "x"))[0]
     await balance.adjust(env, "admin", c["access_code"], "12")
     await say(env, c["id"], "بدي 2 مزارع مستوى 50", "نعم")
@@ -57,10 +57,25 @@ async def test_pay_order_from_balance_then_refund_on_cancel(env):
     assert card and card["payload"]["balance"] == "12.00"                 # balance offered as a way to pay
     await say(env, c["id"], "ادفع من الرصيد")
     o = (await orders.customer_orders(env, c["id"], 1))[0]
-    assert o["status"] == "processing" and await balance.get(env, c["id"]) == Decimal("2.00")
-    assert "من رصيدك" in (await last_texts(env, c["id"]))[0]
+    assert o["status"] == "delivered" and await balance.get(env, c["id"]) == Decimal("2.00")
+    assert await env.pool.fetchval("SELECT count(*) FROM messages WHERE customer_id=$1 AND kind='delivered'", c["id"]) == 1
+    assert await env.pool.fetchval("SELECT count(*) FROM farms WHERE status='sold'") == 2
+    assert not await env.pool.fetchval("SELECT 1 FROM payments WHERE order_id=$1", o["id"])   # nothing for staff to review
     with pytest.raises(StoreError):
         await balance.pay_order(env, c["id"], o["id"])                     # never twice
+    assert await balance.get(env, c["id"]) == Decimal("2.00")
+    assert await env.pool.fetchval("SELECT count(*) FROM balance_log WHERE customer_id=$1 AND kind='order'", c["id"]) == 1
+
+
+async def test_failed_auto_delivery_waits_for_staff_and_refunds_on_cancel(env, monkeypatch):
+    async def broken(*a, **k):
+        return False
+    monkeypatch.setattr(orders, "deliver", broken)
+    c = (await customers.create_codes(env, "t", 1, "x"))[0]
+    await balance.adjust(env, "admin", c["access_code"], "12")
+    await say(env, c["id"], "بدي 2 مزارع مستوى 50", "نعم", "ادفع من الرصيد")
+    o = (await orders.customer_orders(env, c["id"], 1))[0]
+    assert o["status"] == "processing" and await balance.get(env, c["id"]) == Decimal("2.00")
     await orders.admin_cancel(env, "admin", o["id"], "نفد المخزون")
     assert await balance.get(env, c["id"]) == Decimal("12.00")              # refunded once
     assert await env.pool.fetchval("SELECT count(*) FROM farms WHERE status='available'") == 5
@@ -69,13 +84,29 @@ async def test_pay_order_from_balance_then_refund_on_cancel(env):
     assert await balance.get(env, c["id"]) == Decimal("12.00")
 
 
+async def test_two_orders_cannot_spend_the_same_balance(env):
+    c = (await customers.create_codes(env, "t", 1, "x"))[0]
+    await balance.adjust(env, "admin", c["access_code"], "10")
+    ids = []
+    for _ in range(2):
+        o = await orders.prepare(env, c["id"], (await farms.search_offers(env))[0]["offer_code"], 2)
+        await orders.confirm(env, c["id"], o["id"])
+        ids.append(o["id"])
+    import asyncio
+    res = await asyncio.gather(*(balance.pay_order(env, c["id"], i) for i in ids), return_exceptions=True)
+    assert sum(isinstance(x, StoreError) for x in res) == 1                 # 10 covers only one 10.00 order
+    assert await balance.get(env, c["id"]) == Decimal("0.00")
+
+
 async def test_not_enough_balance(env):
     c = (await customers.create_codes(env, "t", 1, "x"))[0]
     await balance.adjust(env, "admin", c["access_code"], "3")
     await say(env, c["id"], "بدي 2 مزارع مستوى 50", "نعم")
     assert not await env.pool.fetchval("SELECT payload->>'balance' FROM messages WHERE customer_id=$1 AND kind IN ('methods','pay_details') LIMIT 1", c["id"])
     await say(env, c["id"], "ادفع من الرصيد")
-    assert "لا يكفي" in (await last_texts(env, c["id"]))[0]
+    msg = (await last_texts(env, c["id"]))[0]
+    assert "لا يكفي" in msg and "ينقصك $7.00" in msg
+    assert await balance.get(env, c["id"]) == Decimal("3.00")
     assert (await orders.customer_orders(env, c["id"], 1))[0]["status"] == "awaiting_payment"
 
 
