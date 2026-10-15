@@ -252,6 +252,16 @@ R = {
                   "en": "Sure! Which farms do you need? Tell me the level, barn size and tool type (land, barn or silo).",
                   "vi": "Được! Bạn cần nông trại thế nào? Hãy cho biết cấp, sức chứa kho và loại công cụ (đất, kho hoặc silo).",
                   "zh": "好的！您需要什么样的农场？请告诉我等级、仓库容量和工具类型（土地、仓库或粮仓）。"},
+    "ask_specs_n": {"ar": "تمام، {n} 👍 ما مواصفاتها؟ اكتب المستوى، وسعة المخزن، ونوع الأدوات (أرض أو حظيرة أو صومعة).",
+                    "en": "Sure, {n} 👍 Which specs? Tell me the level, barn size and tool type (land, barn or silo).",
+                    "vi": "Được, {n} 👍 Thông số thế nào? Hãy cho biết cấp, sức chứa kho và loại công cụ (đất, kho hoặc silo).",
+                    "zh": "好的，{n} 👍 需要什么规格？请告诉我等级、仓库容量和工具类型（土地、仓库或粮仓）。"},
+    "ask_specs_price": {"ar": "السعر يعتمد على مواصفات المزرعة 👍 اكتب المستوى، وسعة المخزن، ونوع الأدوات (أرض أو حظيرة أو صومعة) وكم مزرعة تحتاج، وأحسب لك السعر مباشرة.",
+                        "en": "The price depends on the farm specs 👍 Tell me the level, barn size, tool type (land, barn or silo) and how many, and I'll calculate it right away.",
+                        "vi": "Giá tùy theo thông số 👍 Hãy cho biết cấp, kho, loại công cụ (đất, kho hoặc silo) và số lượng, tôi sẽ tính ngay.",
+                        "zh": "价格取决于农场规格 👍 请告诉我等级、仓库容量、工具类型（土地、仓库或粮仓）和数量，我马上为您计算。"},
+    "ask_add_qty": {"ar": "تمام 👍 كم مزرعة تضيف من {what}؟", "en": "Sure 👍 How many {what} farms should I add?",
+                    "vi": "Được 👍 Thêm bao nhiêu nông trại {what}?", "zh": "好的 👍 要加几个{what}农场？"},
     "ask_field_lvl": {"ar": "ما المستوى الذي تحتاجه؟", "en": "Which level do you need?",
                       "vi": "Bạn cần cấp nào?", "zh": "您需要哪个等级？"},
     "ask_field_barn": {"ar": "ما سعة المخزن التي تريدها؟", "en": "Which barn size do you need?",
@@ -374,14 +384,31 @@ async def _matching(core: Core, spec: dict) -> list[dict]:
                                          tool_type=spec.get("tool_type"), limit=20)
 
 
-SEP_RX = re.compile(r"\n|\s*[+،,;，、；]\s*|\s+(?:و|and|va|và|also|plus)\s+|\s+و(?=\d)|(?<=\D)\s*和\s*|还有|以及", re.I)
+SEP_RX = re.compile(r"\n|\s*[+،,;，、；]\s*|\s+(?:و|and|va|và|also|plus)\s+|\s+و(?=\d)|\s+و(?=(?:ال)?(?:مزر|حساب|كمان|ايضا))|(?<=\D)\s*和\s*|还有|以及", re.I)
 EDIT_RX = _rx(r"^(?:تعديل|عدل|اعدل|غير|بدل|تغيير)(?:\s|$)|تعديل الطلب", r"^(?:edit|change|modify)\b", r"^(?:sua|thay doi)\b", r"^(?:修改|更改)")
+ADD_RX = _rx(r"كمان|اضف|ضيف|ضيفلي|اضافه|زيد|زود|بالاضافه|ايضا|وايضا|ومعها|ومعهم|مع الطلب|للطلب",
+             r"\balso\b|\badd\b|\bplus\b|\banother\b|\bmore\b", r"\bthem\b|\bnua\b", r"再|加|还要|另外")
 REMOVE_RX = _rx(r"احذف|شيل|الغي|بدون|ما بدي|مابدي|ما اريد", r"\bremove\b|\bwithout\b|\bdrop\b", r"\bbo\b|\bxoa\b", r"去掉|不要|删除")
+
+
+TYPE_WORD = r"(?:ارض|الارض|حظيره|الحظيره|حضيره|صومعه|الصومعه|سايلو|land|barn|silo|土地|仓库|粮仓)"
+NEXT_TYPE = re.compile(r"\s(?=(?:\d{1,3}\s*(?:مزارع|مزرعه|مزرعات|farms?)?|مزرعه|مزرعتين|(?:\d{1,3}\s*)?farms?)\s*(?:ادوات\s*|tools?\s*)?" + TYPE_WORD + r")", re.I)
+
+
+def _split_types(t: str) -> str:
+    """'2 ارض 1 حظيره' → '2 ارض، 1 حظيره': a new number + type word after a type word starts a new line."""
+    out, last = [], 0
+    for mm in NEXT_TYPE.finditer(t):
+        if re.search(TYPE_WORD, t[last:mm.start()], re.I):
+            out.append(t[last:mm.start()] + "،")
+            last = mm.start()
+    out.append(t[last:])
+    return "".join(out)
 
 
 def split_lines(raw: str) -> list[dict]:
     """'2 مستوى 50 ادوات ارض و 2 ادوات حظيره' → [{qty 2, lvl 50, tool land}, {qty 2, tool barn, lvl 50}]"""
-    segs = [x for part in re.split(r"[\r\n]+", raw or "") for x in SEP_RX.split(norm(part)) if x and x.strip()]
+    segs = [x for part in re.split(r"[\r\n،,;+，、；]+", raw or "") for x in SEP_RX.split(_split_types(norm(part))) if x and x.strip()]
     parsed = [parse(x) for x in segs]
     parsed = [x for x in parsed if x]
     with_qty = [x for x in parsed if "qty" in x]
@@ -533,6 +560,43 @@ async def respond(core: Core, customer: dict) -> AgentResult:
             return await finish(e.message, {})
         return await finish(text, {"lines": [[c, q] for c, q in wanted], "expect": "confirm"})
 
+    # 3c+) adding another type to the order on the table
+    cur_lines = st.get("lines") or ([[st["offer"], st["qty"]]] if st.get("offer") and st.get("qty") else None)
+    if st.get("expect") == "add_qty" and st.get("add") and cur_lines:
+        n = bare_number(raw) if "qty" not in p else p["qty"]
+        if n:
+            p = {**st["add"], "qty": n}
+            has_spec = True
+    if cur_lines and pending and (m(ADD_RX) or st.get("expect") == "add_qty") and (has_spec or "qty" in p):
+        base = await farms_svc.find_offer(core, cur_lines[-1][0]) or {}
+        new = {k: p[k] for k in ("lvl", "barn", "silo", "tools", "tool_type", "qty") if k in p}
+        if "lvl" not in new and base.get("lvl"):           # "وكمان 1 حظيره": same level as the order
+            new["lvl"] = base["lvl"]
+        if "qty" not in new:
+            return await finish(r(lang, "ask_add_qty", what=tool_label(lang, new.get("tool_type")) if new.get("tool_type") else spec_text(new, lang)),
+                                {**st, "add": {k: v for k, v in new.items() if k != "qty"}, "expect": "add_qty"})
+        spec = {k: new[k] for k in ("lvl", "barn", "silo", "tools", "tool_type") if k in new}
+        matches = await _matching(core, spec)
+        for k in ("barn", "silo", "tools"):                 # still several? prefer the order's capacities
+            if len(matches) > 1 and k not in spec and base.get(k) is not None:
+                same = [o for o in matches if o.get(k) == base[k]]
+                matches = same or matches
+        if not matches:
+            return await finish(r(lang, "type_gone", what=spec_text(spec, lang), list=""), {**st, "expect": "confirm"})
+        code, q = min(matches, key=lambda o: o["price"])["offer_code"], int(new["qty"])
+        lines = [[c, qq] for c, qq in cur_lines]
+        if any(c == code for c, _ in lines):
+            lines = [[c, (qq + q if c == code else qq)] for c, qq in lines]
+        else:
+            lines.append([code, q])
+        try:
+            text = await _prepare_multi(core, cid, [(c, qq) for c, qq in lines], lang, res)
+        except ShortageError as e:
+            return await finish(e.text, {"lines": cur_lines, "expect": "confirm"})
+        except StoreError as e:
+            return await finish(e.message)
+        return await finish(text, {"lines": lines, "expect": "confirm"})
+
     # 3d) changing an order that has several types ("خلي الحظيره 3", "احذف الصومعه", "زيد الارض 1")
     if st.get("lines") and len(st["lines"]) > 1 and (p.keys() & {"qty", "tool_type", "lvl"}):
         offers = {c: await farms_svc.find_offer(core, c) for c, _ in st["lines"]}
@@ -571,6 +635,8 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         field = expect.split(":", 1)[1]
         if field in ("lvl", "barn", "silo", "tools"):
             p[field], has_spec, num = num, True, None      # "50" answers "which level?"
+    elif expect == "specs" and num is not None and not has_spec and "qty" not in p and (st.get("qty") or num >= 10):
+        p["lvl"], has_spec, num = num, True, None          # "50" answers "which specs?" → level 50
     if num is not None and not has_spec and "qty" not in p:
         if expect == "type" and 1 <= num <= len(shown):
             picked = shown[num - 1]
@@ -631,9 +697,11 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         elif not spec:
             st.pop("shown", None)
             st.update(expect="specs")
-            return await finish(r(lang, "ask_specs"))
+            if st.get("qty"):
+                return await finish(r(lang, "ask_specs_n", n=count_text(lang, int(st["qty"]))))
+            return await finish(r(lang, "ask_specs_price" if m(PRICE) else "ask_specs"))
         else:
-            field = next((f for f in ("lvl", "barn", "tool_type", "silo", "tools")
+            field = next((f for f in ("lvl", "tool_type", "barn", "silo", "tools")
                           if f not in spec and len({o.get(f) for o in matches}) > 1), None)
             st.pop("shown", None)                           # nothing is listed to the customer
             if field:
@@ -668,6 +736,12 @@ async def respond(core: Core, customer: dict) -> AgentResult:
     res.order = o
     return await finish(r(lang, "ready"), {"qty": qty, "offer": offer["offer_code"], "expect": "confirm",
                                            **({"spec": st["spec"]} if st.get("spec") else {})})
+
+
+def count_text(lang: str, n: int) -> str:
+    if lang == "ar":
+        return "مزرعة واحدة" if n == 1 else "مزرعتان" if n == 2 else f"{n} مزارع" if n <= 10 else f"{n} مزرعة"
+    return {"en": f"{n} farm{'s' if n != 1 else ''}", "vi": f"{n} nông trại", "zh": f"{n} 个农场"}.get(lang, str(n))
 
 
 def spec_text(spec: dict, lang: str) -> str:
