@@ -214,3 +214,18 @@ PAY_RX = re.compile(r"ادفع|دفع|سدد|اخصم|خصم|اشتري|\bpay\b|
 async def pay_with_balance(core: Core, customer: dict, order_id: int) -> dict:
     async with lock(customer["id"]):
         return await balance_svc.pay_order(core, customer["id"], order_id)
+
+
+async def clear_chat(core: Core, customer: dict) -> None:
+    """The customer cleared the chat: hide everything so far from them (staff keep the full history),
+    forget the conversation in progress and greet again. Orders, farms and balance are untouched."""
+    cid = customer["id"]
+    async with lock(cid):
+        last = await core.pool.fetchval("SELECT coalesce(max(id), 0) FROM messages WHERE customer_id=$1", cid)
+        await core.pool.execute("UPDATE customers SET chat_cleared_id=$2, dialog=NULL WHERE id=$1", cid, last)
+        await note(core, cid, "العميل مسح المحادثة من التطبيق (السجل الكامل محفوظ هنا).")
+        s = await get_settings(core)
+        lang = customer.get("lang") or "ar"
+        custom = (s.get("welcome_text") or "").strip()
+        text = custom if (lang == "ar" and custom) else rules_svc.r(lang, "welcome", store=s.get("store_name") or "HD Agent")
+        await cust_svc.log_message(core, cid, "assistant", text)

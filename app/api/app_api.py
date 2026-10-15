@@ -74,12 +74,13 @@ def build_router(ok) -> APIRouter:
 
     @r.get("/messages")
     async def messages(after: int = 0, c: dict = Depends(current_customer), core: Core = Depends(get_core)):
+        floor = max(after, c.get("chat_cleared_id") or 0)
         if after:
             rows = await core.pool.fetch(
-                f"SELECT * FROM messages WHERE customer_id=$1 AND id>$2 AND {VISIBLE} ORDER BY id LIMIT 200", c["id"], after)
+                f"SELECT * FROM messages WHERE customer_id=$1 AND id>$2 AND {VISIBLE} ORDER BY id LIMIT 200", c["id"], floor)
         else:
             rows = list(reversed(await core.pool.fetch(
-                f"SELECT * FROM messages WHERE customer_id=$1 AND {VISIBLE} ORDER BY id DESC LIMIT 120", c["id"])))
+                f"SELECT * FROM messages WHERE customer_id=$1 AND id>$2 AND {VISIBLE} ORDER BY id DESC LIMIT 120", c["id"], floor)))
         return ok({"messages": [_msg(dict(m)) for m in rows], "states": await _order_states(core, c["id"]),
                    "balance": fmt(await balance_svc.get(core, c["id"]))})
 
@@ -89,6 +90,11 @@ def build_router(ok) -> APIRouter:
         if not text:
             raise StoreError("empty", "اكتب رسالتك.")
         await chat.handle_text(core, c, text)
+        return ok()
+
+    @r.post("/chat/clear")
+    async def clear_chat(c: dict = Depends(current_customer), core: Core = Depends(get_core)):
+        await chat.clear_chat(core, c)
         return ok()
 
     @r.post("/proof")

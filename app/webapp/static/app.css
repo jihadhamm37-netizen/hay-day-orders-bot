@@ -263,3 +263,13 @@ button { cursor: pointer; }
 .login-card .err { text-align: center; min-height: 1.2em; }
 .login-card .btn.primary { min-height: 54px; font-size: 17px; border-radius: 16px; }
 .login-card .hint { margin: 4px auto 0; max-width: 34ch; }
+
+.icon-btn.c-clear { background: linear-gradient(145deg, #94A3B8, #475569); }
+@media (max-width: 420px) {
+  .top .av { display: none !important; }
+  .top { gap: 5px; padding-inline: 8px; }
+  .icon-btn { width: 36px; height: 36px; border-radius: 11px; }
+  .icon-btn svg { width: 19px; height: 19px; }
+  .bal-btn { height: 36px; padding: 0 7px; font-size: 13.5px; gap: 4px; }
+  .bal-btn svg { width: 17px; height: 17px; }
+}

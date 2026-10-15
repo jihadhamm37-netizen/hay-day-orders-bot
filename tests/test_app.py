@@ -252,3 +252,20 @@ async def test_app_pages_served(env):
     assert (await client.request("GET", "/manifest.webmanifest")).status_code == 200
     assert (await client.request("GET", "/sw.js")).status_code == 200
     assert (await client.request("GET", "/a/icon-192.png")).status_code == 200
+
+
+async def test_customer_clears_chat_staff_keeps_history(env):
+    core, client, _ = env
+    code, user = await new_user(core, client)
+    await user.get("/me")
+    await user.post("/messages", {"text": "مرحبا"})
+    before = (await user.messages())["messages"]
+    assert len(before) >= 2
+    assert (await user.post("/chat/clear")).status_code == 200
+    after = (await user.messages())["messages"]
+    assert len(after) == 1 and "HD Agent" in after[0]["text"]               # only a fresh welcome
+    cid = await core.pool.fetchval("SELECT id FROM customers WHERE access_code=$1", code)
+    total = await core.pool.fetchval("SELECT count(*) FROM messages WHERE customer_id=$1", cid)
+    assert total >= len(before) + 2                                        # nothing deleted for staff
+    await user.post("/messages", {"text": "بدي مزارع"})
+    assert len((await user.messages())["messages"]) >= 3                   # new messages keep coming
