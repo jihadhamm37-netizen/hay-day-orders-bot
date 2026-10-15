@@ -27,6 +27,7 @@
   for (const [l, v] of Object.entries(I18N_MORE)) Object.assign(I18N[l], v);
   let LANG = LS.get("hd_lang") || "ar";   // Arabic by default; the customer picks on the sign-in screen
   const T = (k, vars) => { let s = (I18N[LANG] || I18N.en)[k] ?? I18N.en[k] ?? k; if (vars) for (const [a, b] of Object.entries(vars)) s = s.replace("{" + a + "}", b); return s; };
+  document.documentElement.dataset.theme = "light";   // the app is always the white theme
   function applyLang() {
     document.documentElement.lang = LANG; document.documentElement.dir = LANG === "ar" ? "rtl" : "ltr";
     document.title = "HD Agent";
@@ -131,17 +132,18 @@
       maxlength: "20", placeholder: "XXXXXXXX", "aria-label": T("code_label") });
     const err = h("div", { class: "err", role: "alert" }, msg || "");
     const btn = h("button", { class: "btn primary block", type: "submit" }, T("enter"));
-    const langs = h("div", { class: "langs", role: "radiogroup", "aria-label": T("language") }, LANG_NAMES.map(([code, name]) =>
-      h("button", { type: "button", class: "lang" + (code === LANG ? " on" : ""), role: "radio", "aria-checked": code === LANG ? "true" : "false",
-        lang: code, dir: code === "ar" ? "rtl" : "ltr",
-        onclick: () => { const keep = input.value; setLang(code); renderLogin(); const i = root.querySelector(".code-field input"); if (i) i.value = keep; } }, name)));
+    const langName = (LANG_NAMES.find(([c]) => c === LANG) || LANG_NAMES[0])[1];
+    const langBtn = h("button", { type: "button", class: "login-lang", "aria-label": T("language"),
+      onclick: () => openLang((code) => { const keep = input.value; setLang(code); renderLogin(); const i = root.querySelector(".code-field input"); if (i) i.value = keep; }) },
+      svg(I.globe), h("span", null, langName));
     const form = h("form", { class: "login" },
-      langs,
-      h("div", { class: "bot" }, (() => { const s = svg(I.bot); s.setAttribute("width", 52); s.setAttribute("height", 52); s.style.color = "#F2C14E"; return s; })()),
-      h("div", null, h("h1", null, "HD Agent"), h("p", null, T("tagline"))),
-      h("label", { class: "code-field" }, h("span", null, "HD-"), input),
-      err, btn,
-      h("p", { class: "hint" }, T("one_device")));
+      h("div", { class: "login-top" }, langBtn),
+      h("div", { class: "login-card" },
+        h("div", { class: "bot" }, (() => { const s = svg(I.bot); s.setAttribute("width", 48); s.setAttribute("height", 48); s.style.color = "#F2C14E"; return s; })()),
+        h("h1", null, "HD Agent"), h("p", { class: "tag" }, T("tagline")),
+        h("label", { class: "code-field" }, h("span", null, "HD-"), input),
+        err, btn,
+        h("p", { class: "hint" }, T("one_device"))));
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const raw = input.value.trim().toUpperCase().replace(/^HD-?/, "");
@@ -414,10 +416,12 @@
     return { close };
   }
 
-  function openLang() {
+  function openLang(onPick) {
     const sh = sheet(T("language"), h("div", { class: "langs" }, LANG_NAMES.map(([code, name]) =>
       h("button", { type: "button", class: "lang" + (code === LANG ? " on" : ""), lang: code, onclick: async () => {
-        sh.close(); setLang(code);
+        sh.close();
+        if (typeof onPick === "function") { onPick(code); return; }
+        setLang(code);
         try { await api("POST", "/lang", { lang: code }); } catch { /* offline: UI still switches */ }
         start();
       } }, name))));
