@@ -252,18 +252,19 @@ R = {
                   "en": "Sure! Which farms do you need? Tell me the level, barn size and tool type (land, barn or silo).",
                   "vi": "Được! Bạn cần nông trại thế nào? Hãy cho biết cấp, sức chứa kho và loại công cụ (đất, kho hoặc silo).",
                   "zh": "好的！您需要什么样的农场？请告诉我等级、仓库容量和工具类型（土地、仓库或粮仓）。"},
-    "ask_field_lvl": {"ar": "ما المستوى الذي تحتاجه؟ المتوفر: {vals}", "en": "Which level do you need? Available: {vals}",
-                      "vi": "Bạn cần cấp nào? Hiện có: {vals}", "zh": "您需要哪个等级？目前有：{vals}"},
-    "ask_field_barn": {"ar": "ما سعة المخزن التي تريدها؟ المتوفر: {vals}", "en": "Which barn size? Available: {vals}",
-                       "vi": "Sức chứa kho bao nhiêu? Hiện có: {vals}", "zh": "需要多大的仓库？目前有：{vals}"},
-    "ask_field_tool_type": {"ar": "ما نوع الأدوات التي تريدها؟ المتوفر: {vals}", "en": "Which tool type? Available: {vals}",
-                            "vi": "Bạn muốn loại công cụ nào? Hiện có: {vals}", "zh": "需要哪种工具？目前有：{vals}"},
-    "ask_field_silo": {"ar": "ما سعة الصومعة التي تريدها؟ المتوفر: {vals}", "en": "Which silo size? Available: {vals}",
-                       "vi": "Sức chứa silo bao nhiêu? Hiện có: {vals}", "zh": "需要多大的粮仓？目前有：{vals}"},
-    "ask_field_tools": {"ar": "كم عدد الأدوات الذي تريده؟ المتوفر: {vals}", "en": "How many tools? Available: {vals}",
-                        "vi": "Số lượng công cụ? Hiện có: {vals}", "zh": "需要多少工具？目前有：{vals}"},
-    "ask_qty_type": {"ar": "ممتاز 👍\n{offer}\n\nكم مزرعة تحتاج من هذا النوع؟", "en": "Great 👍\n{offer}\n\nHow many farms of this type do you need?",
-                     "vi": "Tuyệt 👍\n{offer}\n\nBạn cần bao nhiêu nông trại loại này?", "zh": "好的 👍\n{offer}\n\n这种农场您需要几个？"},
+    "ask_field_lvl": {"ar": "ما المستوى الذي تحتاجه؟", "en": "Which level do you need?",
+                      "vi": "Bạn cần cấp nào?", "zh": "您需要哪个等级？"},
+    "ask_field_barn": {"ar": "ما سعة المخزن التي تريدها؟", "en": "Which barn size do you need?",
+                       "vi": "Bạn cần sức chứa kho bao nhiêu?", "zh": "需要多大的仓库？"},
+    "ask_field_tool_type": {"ar": "ما نوع الأدوات التي تريدها؟ أدوات أرض أو أدوات حظيرة أو أدوات صومعة؟",
+                            "en": "Which tool type do you want: land, barn or silo tools?",
+                            "vi": "Bạn muốn loại công cụ nào: đất, kho hay silo?", "zh": "需要哪种工具：土地、仓库还是粮仓工具？"},
+    "ask_field_silo": {"ar": "ما سعة الصومعة التي تريدها؟", "en": "Which silo size do you need?",
+                       "vi": "Bạn cần sức chứa silo bao nhiêu?", "zh": "需要多大的粮仓？"},
+    "ask_field_tools": {"ar": "كم عدد الأدوات الذي تريده؟", "en": "How many tools do you need?",
+                        "vi": "Bạn cần bao nhiêu công cụ?", "zh": "需要多少工具？"},
+    "ask_qty_type": {"ar": "ممتاز 👍 كم مزرعة تحتاج من هذا النوع؟", "en": "Great 👍 How many farms of this type do you need?",
+                     "vi": "Tuyệt 👍 Bạn cần bao nhiêu nông trại loại này?", "zh": "好的 👍 这种农场您需要几个？"},
     "shortage": {"ar": "عذرًا، العدد المطلوب غير متوفر حاليًا. طلبت {q} مزارع، والمتوفر في المخزون {n} مزارع فقط.\nكم مزرعة تريد شراءها من الكمية المتوفرة؟ يمكنك كتابة العدد الذي يناسبك أو إلغاء الطلب.",
                  "en": "Sorry, that quantity isn't available right now. You asked for {q} farms and only {n} are in stock.\nHow many would you like from the available quantity? Write the number that suits you, or cancel.",
                  "vi": "Xin lỗi, số lượng này hiện không đủ. Bạn yêu cầu {q} nông trại, kho chỉ còn {n}.\nBạn muốn mua bao nhiêu trong số còn lại? Hãy viết số lượng hoặc hủy.",
@@ -634,14 +635,14 @@ async def respond(core: Core, customer: dict) -> AgentResult:
         else:
             field = next((f for f in ("lvl", "barn", "tool_type", "silo", "tools")
                           if f not in spec and len({o.get(f) for o in matches}) > 1), None)
-            shown_list = matches[:8]
-            st.update(shown=[o["offer_code"] for o in shown_list])
+            st.pop("shown", None)                           # nothing is listed to the customer
             if field:
                 st.update(expect=f"field:{field}")
                 vals = field_values(field, matches, lang)
                 return await finish(r(lang, f"ask_field_{field}", vals=field_vals_text(field, vals, lang)))
-            st.update(expect="type")
-            return await finish(r(lang, "ask_type", list=offer_list(shown_list, lang)))
+            offer = min(matches, key=lambda o: o["price"])     # same specs, nothing to ask: cheapest type
+            st["offer"] = offer["offer_code"]
+            st.pop("shown", None)
 
     # quantity
     if not st.get("qty"):

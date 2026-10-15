@@ -232,3 +232,13 @@ async def test_memory_kept_for_customer_who_sent_a_proof_before(env):
 async def test_shortage_after_tool_type_answer(env):
     r, o, _ = await talk(env, ["8 مزارع مستوى 50", "صومعة"])
     assert "طلبت 8 مزارع، والمتوفر في المخزون 5 مزارع فقط" in r[1]
+
+
+async def test_nothing_about_stock_before_the_quantity(env):
+    """Questions only: no stock list, no 'available', no price until the customer gives the quantity."""
+    r, o, _ = await talk(env, ["بدي مزارع", "مستوى 50", "ادوات حظيرة", "20"])
+    for reply in r[:3]:
+        assert "متوفر" not in reply and "USDT" not in reply and "6.00" not in reply
+    assert r[2] == "ممتاز 👍 كم مزرعة تحتاج من هذا النوع؟"
+    assert "طلبت 20 مزارع، والمتوفر في المخزون 10 مزارع فقط" in r[3]      # stock is told only after the quantity
+    assert o is None
