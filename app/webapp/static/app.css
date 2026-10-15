@@ -214,3 +214,35 @@ button { cursor: pointer; }
 .ticket .creds { margin-top: 8px; font-size: 13px; max-height: 260px; overflow: auto; }
 .btn svg { width: 22px; height: 22px; flex: none; }
 .move small.ref-s { color: var(--muted); }
+
+/* white chat: bot bubbles white, customer bubbles black */
+.log { background: #FFFFFF; }
+.b.bot { background: #FFFFFF; color: #16211B; border: 1px solid #E3E8E5; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.b.me { background: #111111; color: #FFFFFF; }
+.b.me time { color: rgba(255,255,255,.65); }
+.b.staff { background: #FFFFFF; color: #16211B; }
+.composer { background: #FFFFFF; }
+
+/* bell + language */
+.icon-btn { position: relative; }
+.icon-btn.c-bell { background: linear-gradient(145deg, #B78BFF, #7C3AED); }
+.icon-btn .badge { position: absolute; top: -5px; inset-inline-end: -5px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px;
+  background: #EF4444; color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; border: 2px solid var(--field); }
+.icon-btn .badge[hidden] { display: none; }
+.icon-btn.c-lang .lang-code { position: absolute; bottom: -4px; inset-inline-start: -4px; font-size: 9px; font-weight: 800; line-height: 1;
+  background: #fff; color: #2563EB; border-radius: 6px; padding: 2px 4px; }
+.notif { display: flex; gap: 12px; align-items: flex-start; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.notif-ic { width: 36px; height: 36px; border-radius: 11px; flex: none; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(145deg, #B78BFF, #7C3AED); }
+.notif-ic.ok { background: linear-gradient(145deg, #4ADE80, #16A34A); }
+.notif-ic svg { width: 19px; height: 19px; }
+.notif .s { font-size: 12px; color: var(--muted); margin-top: 4px; }
+@media (max-width: 420px) {
+  .top { gap: 6px; }
+  .top .who { display: none; }
+  .top .av { display: grid !important; }
+  .icon-btn { width: 38px; height: 38px; }
+  .bal-btn { padding: 0 8px; font-size: 14px; }
+  .bal-btn { margin-inline-start: auto; }
+}
+.ticket .acts .btn { white-space: nowrap; padding: 0 10px; }
